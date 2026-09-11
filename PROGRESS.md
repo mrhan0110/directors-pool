@@ -28,11 +28,19 @@
 
 1. **4단계 버그 수정**: `REVIEW_보고서.md` Part 4/5 참고. 사용자가 아직 수정 범위(A/B/C/D)를
    확정하지 않았다. 재개 시 범위부터 다시 확인.
-2. **실사용 전환**: DART 실제 수집기(`collectors/dart.py`, `collectors/pipeline.py`)는 구현·
-   테스트 완료(API 키 없어 실제 응답으로는 미검증 — 문서 스펙 기반, 방어적 파싱). 다음 후보:
-   - Docker 패키징(Dockerfile·docker-compose·환경변수 3환경 분리) — 배포 미정이어도 코드는 준비 가능
-   - 뉴스·홈페이지 수집기는 PRD §14-2(뉴스 소스 계약)가 결정되지 않아 보류
-   - DART 키 발급 후 실제 응답으로 `collectors/test_dart_collector.py`의 파서 가정(날짜 형식 등) 재검증 필요 — 사용자에게 키 발급 안내함(opendart.fss.or.kr, 무료)
+2. **실사용 전환** (진행 중):
+   - [x] DART 실제 수집기(`collectors/dart.py`, `collectors/pipeline.py`) 구현·테스트 완료.
+     API 키 없어 실제 응답으로는 미검증 — 문서 스펙 기반, 방어적 파싱(테스트 20건, monkeypatch).
+     대상 회사는 `AppSetting(collect.dart_target_companies)`에서 읽음(PRD §14-1 미결이라 하드코딩 안 함).
+   - [x] Docker 패키징: `Dockerfile`(app+batch 공용 이미지, 나눔고딕 폰트, healthcheck),
+     `docker-compose.yml`(app+batch+postgres, batch는 profiles로 on-demand), `requirements-docker.txt`
+     (psycopg[binary] 분리), `deploy/nginx.conf.example`(HTTPS 템플릿, F-09-19).
+     **이 환경에 Docker 가 없어 실제 빌드는 못 해봄 — YAML 문법만 검증(pyyaml).** 다음 세션에서
+     Docker 가 있는 환경이면 `docker compose up -d --build` 로 먼저 빌드 확인할 것.
+   - [ ] 뉴스·홈페이지 수집기는 PRD §14-2(뉴스 소스 계약)가 결정되지 않아 보류
+   - [ ] DART 키 발급 후 실제 응답으로 `tests/test_dart_collector.py`의 파서 가정(날짜 형식 등)
+     재검증 필요 — 사용자에게 opendart.fss.or.kr 무료 발급 안내함(2026-09-11 세션에서 미보유 확인)
+   - [ ] SSO/OIDC 실연동, 법무·개인정보 결정(PRD §14) — 사용자 쪽 결정 필요, 코드로 선점 불가
 
 ### 3단계 작업 단위 체크리스트
 

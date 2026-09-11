@@ -1,0 +1,59 @@
+# Nginx 리버스 프록시 예시 (PRD F-09-19 HTTPS 강제, §8 접속 계층).
+#
+# 이 파일은 템플릿이다 — 그대로 쓰면 동작하지 않는다. 최소한 다음을 실제 값으로 바꿔야 한다:
+#   - server_name           (실제 도메인)
+#   - ssl_certificate*       (실제 인증서 경로 — Let's Encrypt 등)
+#   - upstream app 의 포트/호스트 (docker-compose 로 띄웠다면 기본 app:8501 그대로 둬도 됨)
+#
+# SSO 를 리버스 프록시 단에서 강제하려면(PRD F-09-10 "1차 관문") OAuth2 Proxy 를
+# 이 Nginx 앞이나 뒤에 추가로 배치한다 — 이 예시는 TLS 종단·HTTP→HTTPS 리다이렉트까지만 다룬다.
+
+upstream pool_app {
+    server app:8501;
+}
+
+# 80번 포트는 인증서 발급(ACME challenge)과 HTTPS 리다이렉트 용도로만 연다.
+server {
+    listen 80;
+    server_name pool.example.com;  # TODO: 실제 도메인으로 교체
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name pool.example.com;  # TODO: 실제 도메인으로 교체
+
+    # TODO: 실제 인증서 경로로 교체 (예: certbot 발급 결과)
+    ssl_certificate     /etc/letsencrypt/live/pool.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pool.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # 실명 개인정보를 다루므로 검색엔진 색인을 막는다.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location / {
+        proxy_pass http://pool_app;
+        proxy_http_version 1.1;
+
+        # Streamlit 은 WebSocket 으로 상태를 유지한다 — 업그레이드 헤더 필수.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 86400;  # 장시간 세션(대용량 조회 등) 끊김 방지
+    }
+}

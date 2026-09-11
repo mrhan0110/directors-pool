@@ -3,13 +3,17 @@
 상장회사 이사회 사무국이 독립이사(사외이사) 후보자 POOL을 구축·관리하는 사내 Streamlit 앱.
 요구사항 원천은 `PRD_독립이사_후보자_POOL.md`, 구현 순서는 `PROMPTS_단계별_개발.md`를 따른다.
 
-> **현재 단계: 3단계(UI 디자인) 완료.** 검색·상세·비교·POOL 관리·검수·리포트(PDF/XLSX)·공유·관리자 화면과
-> 스크리닝·전문분야 분류·적합도 점수·수집 적재 파이프라인이 실제 로직으로 동작하며, 전 화면이
-> `core/ui/`(테마·재사용 컴포넌트·차트) 한 곳의 통일된 스타일을 공유한다.
-> DART·뉴스·기업 홈페이지의 **실제 외부 API 호출**은 API 키가 없어 미구현 상태이며(`collectors/*.py`),
-> `DATA_MODE=dummy`(기본값)로는 동일한 적재 파이프라인(`core/ingest.py`)을 가짜 데이터로 통과시켜 검증한다.
-> 다음은 4단계(PRD 부합성·버그 검토)이며, `PROMPTS_단계별_개발.md`를 따른다. 3단계에서 발견했지만
-> 고치지 않은 기능 버그 1건은 `PROGRESS.md`를 참고.
+> **현재 단계: 3단계(UI 디자인) 완료 + 4단계 검토 보고서 작성 완료(`REVIEW_보고서.md`).** 검색·상세·비교·
+> POOL 관리·검수·리포트(PDF/XLSX)·공유·관리자 화면과 스크리닝·전문분야 분류·적합도 점수·수집 적재
+> 파이프라인이 실제 로직으로 동작하며, 전 화면이 `core/ui/`(테마·재사용 컴포넌트·차트) 한 곳의 통일된
+> 스타일을 공유한다. 4단계 검토에서 발견한 버그·PRD 미충족 항목은 `REVIEW_보고서.md`에 정리했고,
+> 사용자 승인 대기 중이다.
+>
+> **실사용 전환 트랙(4단계 승인과 별도로 진행 중)**: DART 실제 수집기(`collectors/dart.py`,
+> `collectors/pipeline.py`)를 DART 개발가이드 공식 명세로 구현했다 — 단, **API 키가 없어 실제 응답으로
+> 검증하지 못했다**(문서 스펙 + 방어적 파싱만으로 작성). Docker 패키징(`Dockerfile`, `docker-compose.yml`)도
+> 준비했지만 **이 환경에 Docker 가 없어 실제 빌드는 못 해봤다** — YAML 문법만 검증했다. 뉴스·홈페이지
+> 수집기는 PRD §14-2(뉴스 소스 계약)가 정해지지 않아 보류 상태다.
 
 > ⚠️ **실명 데이터 금지.** 개발·테스트는 `data/seed.py`가 만드는 합성 더미데이터(`가상001 …`, `example.com` URL)만 사용한다.
 > Streamlit Community Cloud 등 퍼블릭 환경에 실명 데이터를 배포하지 않는다 (PRD §6.9 (4)).
@@ -31,8 +35,13 @@ copy .env.example .env                # 필요 시 값 수정. .env 는 커밋 �
 | `DATA_MODE` | `dummy` | `dummy` \| `live`. 기본은 더미 모드 |
 | `AUTH_PROVIDER` | `mock` | `mock`(역할 선택 모의 로그인) \| `oidc`(이후 단계) |
 | `SNAPSHOT_DIR` | `./storage/snapshots` | 원문 스냅샷 경로 (F-05-6) |
-| `DART_API_KEY`, `NEWS_API_KEY` | 비움 | 실제 수집기용(키 없으면 `collectors/*.py`는 비활성 상태로 동작). 코드에 하드코딩 금지 |
+| `DART_API_KEY`, `NEWS_API_KEY` | 비움 | 실제 수집기용(키 없으면 `collectors/*.py`는 비활성 상태로 동작). 코드에 하드코딩 금지. DART 키는 [opendart.fss.or.kr](https://opendart.fss.or.kr)에서 무료·즉시 발급 |
+| `DART_BSNS_YEAR` | 작년 | DART 임원현황 조회 사업연도(4자리). 정기보고서는 익년에 공시되므로 기본은 작년 |
 | `SEED_PERSON_COUNT` | `200` | 시드 후보자 수 (테스트는 25) |
+
+`DATA_MODE=live`로 실제 DART 수집을 돌리려면 위 `DART_API_KEY`에 더해, 관리자 화면(또는
+`AppSetting` 테이블)의 `collect.dart_target_companies` 값을 `고유번호:회사명` 쌍(콤마로 여러 개)으로
+채워야 한다 — 초기 수집 대상 회사 범위는 PRD §14-1 결정 대기 사항이라 코드에 기본값을 넣지 않았다.
 
 ## 시드 데이터 생성
 
@@ -94,6 +103,20 @@ pytest -p pytest_cov.plugin -p no:logging --cov=core --cov=data --cov=batch --co
 > 전역 Python에 `langsmith`가 설치돼 있으면 그 pytest 플러그인이 `requests_toolbelt` 누락으로 pytest 기동을 막을 수 있다.
 > `.venv`에서 실행하거나, `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'`을 설정한 뒤 실행한다.
 
+## Docker (PRD §8, F-09-21 — 코드만 준비된 상태, 아래 "알려진 제약" 참고)
+
+```powershell
+cp .env.example .env    # POSTGRES_PASSWORD 등 값 채우기
+docker compose up -d --build                                   # 웹 앱 (localhost:8501)
+docker compose run --rm batch python -m data.seed               # 더미데이터 시드
+docker compose run --rm batch python -m batch.run analyze       # 배치 1회 실행
+```
+
+같은 이미지를 웹(`app`)과 배치(`batch`, `profiles: ["batch"]`라 `up`으로는 안 뜨고 `run`으로만 실행)에
+공용으로 쓴다. `db`(PostgreSQL)까지 3개 서비스 구성이며, 정기 배치 실행(F-05 (3) 갱신 주기)은 이 파일만으론
+스케줄링되지 않으므로 운영에서는 호스트 cron 등이 `docker compose run batch ...`를 주기적으로 호출해야 한다.
+HTTPS 종단은 `deploy/nginx.conf.example`을 실제 도메인·인증서로 채워 앞단에 둔다.
+
 ## 구조
 
 ```
@@ -105,17 +128,28 @@ data/             SQLAlchemy 모델 · repository · 세션 · 시드
 collectors/       DART · 뉴스 · 웹 수집기 (화이트리스트·robots.txt 가드는 동작, 실제 API 호출부는 키 없어 미구현)
 reports/          PDF/XLSX 출력 (개인 프로파일·POOL 요약, 워터마크·검수완료 게이트 적용)
 batch/            Streamlit 밖 배치 실행기(analyze/classify/screen/score/collect/url-check/purge)
-tests/            pytest (약 300건)
+tests/            pytest (약 350건)
+deploy/           배포 템플릿(nginx.conf.example — 실제 도메인·인증서로 채워야 함)
+Dockerfile, docker-compose.yml, requirements-docker.txt   Docker 패키징(§8, F-09-21)
 ```
 
 `pages/`에는 SQL·비즈니스 로직을 두지 않는다. 전부 `core/`와 `data/repository`를 거친다.
 
-## 알려진 제약 (2단계 완료 시점)
+## 알려진 제약
 
-- **DART·뉴스·기업 홈페이지 실제 수집**: API 키가 없어 `collectors/dart.py`·`news.py`·`web.py`의 라이브 호출부는
-  `NotImplementedError`로 남아 있다. `DATA_MODE=live`로 전환하기 전에 이 부분을 채워야 한다.
-  적재 파이프라인(`core/ingest.py`)은 완성되어 있으므로, 파싱 결과를
-  `ingest_fact`/`ingest_industry`/`get_or_create_person`에 연결하면 된다.
+- **DART 수집기는 API 키로 검증되지 않았다**: `collectors/dart.py`는 DART 개발가이드의 실제 API 명세
+  (요청 파라미터·응답 필드명)로 작성했고 단위테스트도 있지만, 개발 세션에 `DART_API_KEY`가 없어
+  **실제 응답으로는 한 번도 호출해보지 못했다.** 날짜·생년월 형식이 문서와 다르면 방어적으로 `None`을
+  반환하도록 만들어뒀지만, 키를 발급받으면 회사 1곳으로 먼저 `python -m batch.run collect`를 돌려
+  결과를 눈으로 확인하는 것을 권장한다.
+- **뉴스·기업 홈페이지 수집은 미구현**: `collectors/news.py`·`web.py`는 1단계 인터페이스만 있다.
+  뉴스는 소스 계약(PRD §14-2, 빅카인즈/상용 API/언론사 제휴 중 미정)이 필요해 보류했다.
+- **Docker 이미지를 실제로 빌드해보지 못했다**: `Dockerfile`·`docker-compose.yml`을 준비했지만
+  이 개발 환경에 Docker 가 설치돼 있지 않아 `docker build`/`docker compose up`을 실행해 검증하지
+  못했다(YAML 문법만 확인). 처음 빌드할 때 결과를 확인해야 한다.
 - **SSO(OIDC) 미연동**: `AUTH_PROVIDER=oidc`는 인터페이스만 있고 3.5단계 작업이다. 현재는 `mock`(역할 선택 모의 로그인)만 동작한다.
+- **HTTPS 종단 미설정**: `deploy/nginx.conf.example`은 도메인·인증서를 채워야 쓸 수 있는 템플릿이다.
 - **PRD §14의 16개 미결 사항**(모집단 범위, 뉴스 API 계약, 법령 임계값 확정치 등)은 여전히 결정 대기이며,
   해당 값은 전부 `AppSetting`(관리자 화면에서 수정 가능)의 보수적 기본값으로 채워져 있다.
+- **4단계 검토에서 발견한 버그·PRD 미충족 항목**은 `REVIEW_보고서.md` 참고(Critical 없음, 수정 범위는
+  사용자 승인 대기).

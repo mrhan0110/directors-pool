@@ -1,0 +1,4 @@
+# Docker 이미지 전용 — 운영 DB(PostgreSQL) 드라이버를 추가한다.
+# 로컬 개발(.venv)은 SQLite 만 쓰므로 requirements.txt 만으로 충분하다.
+-r requirements.txt
+psycopg[binary]>=3.1

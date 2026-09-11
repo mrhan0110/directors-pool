@@ -1,0 +1,63 @@
+# 로컬/사내서버용 구성 예시 (PRD §8: Streamlit 컨테이너 + 배치 컨테이너 + PostgreSQL).
+#
+# 사용법
+#   cp .env.example .env               # 값 채우기 (DATABASE_URL 은 아래에서 이미 postgres 로 지정)
+#   docker compose up -d --build         # 웹 앱 기동 (localhost:8501)
+#   docker compose run --rm batch python -m batch.run analyze   # 배치 1회 실행
+#   docker compose run --rm batch python -m data.seed           # 더미데이터 시드
+#
+# 배치 정기 실행(F-05(3) 갱신 주기)은 이 파일만으로는 스케줄링되지 않는다 — 운영에서는
+# 호스트 cron 또는 오케스트레이터(k8s CronJob 등)가 위 `docker compose run batch ...` 를
+# 주기적으로 호출해야 한다.
+#
+# ⚠️ 이 구성은 코드/설정 준비까지만이다 — HTTPS 종단(리버스 프록시), 실제 도메인·인증서,
+# SSO 연동은 배포 환경이 정해진 뒤 추가해야 한다(deploy/nginx.conf.example 참고).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pool}
+      POSTGRES_USER: ${POSTGRES_USER:-pool}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env 에 설정하세요}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pool}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pool}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pool}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - storage_data:/app/storage
+
+  batch:
+    build: .
+    profiles: ["batch"]   # `docker compose up` 기본 실행 대상에서 제외 — run/exec 로만 쓴다
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pool}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pool}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - storage_data:/app/storage
+    command: ["python", "-m", "batch.run", "analyze"]
+
+volumes:
+  db_data:
+  storage_data:

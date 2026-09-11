@@ -9,5 +9,5 @@ openpyxl>=3.1       # XLSX 내보내기 (PRD F-02-3)
 reportlab>=4.0      # 사추위 보고용 PDF (PRD 부록 A)
 altair>=5,<7        # 경력 타임라인·분포 차트 (PRD 3단계 §E). streamlit 의 간접 의존성이지만 직접 import 하므로 명시
 
-# 운영 전환 시 활성화 (PRD §8)
-# psycopg[binary]>=3.1
+# 운영 DB(PostgreSQL) 드라이버는 requirements-docker.txt 에서만 설치한다(§8) —
+# 로컬 개발은 SQLite 만 쓰므로 여기 넣어두면 불필요한 빌드 의존성이 늘어난다.
