@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from core import access, pools, sharing
 from core import constants as C
 from core.guard import confidential_notice, require
 from data import repository
@@ -12,6 +13,22 @@ user = require("dashboard")
 
 st.title("대시보드")
 confidential_notice()
+
+# 외부뷰어는 공유받은 POOL 만 본다. 전체 후보 통계·명단은 보여주지 않는다 (F-09-12)
+if user.is_viewer:
+    shared = pools.list_pools(access.allowed_pool_ids(user))
+    st.subheader("공유받은 POOL")
+    if not shared:
+        st.info("현재 열람 가능한 POOL 이 없습니다. 공유 링크가 만료되었거나 회수되었을 수 있습니다.")
+    else:
+        until = {l.pool_id: l.expires_at for l in sharing.active_links_for(user.email)}
+        counts = pools.member_counts()
+        for p in shared:
+            st.markdown(f"**{p.name}** · 후보 {counts.get(p.pool_id, 0)}명")
+            st.caption(f"열람 가능 기한 {until[p.pool_id]:%Y-%m-%d} · 읽기 전용 · 다운로드 불가")
+    if user.expires_at:
+        st.caption(f"계정 접근 만료일: {user.expires_at.isoformat()}")
+    st.stop()
 
 total = repository.person_count()
 unreviewed = repository.unreviewed_count()

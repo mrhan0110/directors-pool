@@ -10,8 +10,8 @@ from datetime import datetime
 
 import streamlit as st
 
+from core import access, pools, state
 from core import constants as C
-from core import pools
 from core.audit import log_access
 from core.auth import can_edit_pool
 from core.guard import confidential_notice, require
@@ -47,13 +47,25 @@ if editable:
                 except ValueError as exc:
                     st.warning(str(exc))
 
-plist = pools.list_pools()
+# 외부뷰어는 공유받은 POOL 만 (F-09-12). 범위는 매 요청 DB 에서 다시 계산한다.
+plist = pools.list_pools(access.allowed_pool_ids(user))
 counts = pools.member_counts()
 if not plist:
-    st.info("생성된 POOL 이 없습니다.")
+    st.info("열람 가능한 POOL 이 없습니다." if user.is_viewer else "생성된 POOL 이 없습니다.")
     st.stop()
 
-pool = st.selectbox("POOL 선택", plist, format_func=lambda p: f"{p.name} (등록 {counts.get(p.pool_id, 0)}명)")
+pool_ids = [p.pool_id for p in plist]
+preferred = state.get(state.K_SELECTED_POOL)
+pool = st.selectbox(
+    "POOL 선택",
+    plist,
+    index=pool_ids.index(preferred) if preferred in pool_ids else 0,
+    format_func=lambda p: f"{p.name} (등록 {counts.get(p.pool_id, 0)}명)",
+    key="pool_select",
+)
+state.put(state.K_SELECTED_POOL, pool.pool_id)
+if user.is_viewer:
+    st.caption("공유받은 POOL 입니다. 읽기 전용이며 다운로드할 수 없습니다.")
 log_access(user.user_id, C.ACT_VIEW, page="pool", detail=f"pool={pool.pool_id}")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -158,7 +170,7 @@ if editable:
             except ValueError as exc:
                 st.warning(str(exc))
 events = pools.timeline(pool.pool_id)
-names_all = dict(repository.list_person_options())
+names_all = dict(access.filter_person_options(user, repository.list_person_options()))
 if events:
     st.dataframe(
         [

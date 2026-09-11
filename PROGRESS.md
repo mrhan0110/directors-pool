@@ -18,7 +18,14 @@
 
 ## ▶ 다음 작업
 
-**2-10 커밋 → 2-11 J 인증·공유** (§J).
+**2-11 검증부터 재개** — 2-11 코드는 ①~⑧ 전부 작성·커밋(WIP)했으나 **테스트를 아직 한 번도 돌리지 않았다**.
+1. `.\.venv\Scripts\python.exe -m pytest -q -p no:logging` 실행 → 실패 수정
+2. 통과하면 PROGRESS에서 2-11 체크 후 `2-11 인증·공유 검증` 커밋 → 2-12(G 수집)로
+- 2-11에서 바뀐 파일: core/guard.py(refresh_user·스탬프), core/state.py(K_SELECTED_POOL·K_PENDING_SHARE·K_ISSUED_LINK), core/auth.py(refresh_user), core/sharing.py, core/access.py, app.py(?share= 처리), pages/0·2·4·8, data/seed.py(_seed_share), tests/helpers.py, tests/test_sharing.py, tests/test_viewer_pages.py, tests/test_pages_render.py·test_pages_guard.py(user_for로 교체)
+- 테스트 실패 시 의심 지점: test_viewer_pages의 `at.selectbox(key=...).options` 개수 비교, 대시보드 뷰어 분기의 `until[p.pool_id]`, seed `_seed_share`가 conftest 시드에서 정상 발급되는지
+- 개발 DB는 스키마 변경 없음. 시드 공유 링크를 보려면 `seed.run(reset=True)`로 재생성
+
+**(참고) 2-10 커밋 → 2-11 J 인증·공유** (§J).
 - 2-10(검증 완료, 커밋 전이면 먼저 커밋): reports/pdf.py reports/builder.py pages/6_리포트.py core/state.py tests/test_pdf.py tests/test_pages_render.py PROGRESS.md. 샘플 PDF 육안 확인 완료(한글·워터마크·각주·2면). POOL PDF는 리포트 화면 POOL 탭에서 제공(POOL 화면 버튼 없음).
 - 2-11 작성됨: `core/sharing.py`(issue_link/revoke/verify_token/active_links_for/list_links/status_of/access_history, 토큰 sha256만 저장, 수신자 활성 계정 필수, 만료 상한 설정), `core/access.py`(allowed_pool_ids/allowed_person_ids/can_view_person/filter_person_options — 뷰어만 제한, 매 요청 DB 재계산), `core/auth.refresh_user`, `tests/helpers.py`(user_for(role)), `tests/test_sharing.py`.
 - 2-11 남은 것: ① `guard.require`에 `refresh_user`(비활성·만료·역할변경 즉시 반영) + `confidential_notice`에 열람자·일시 스탬프 ② `app.py`: refresh + `?share=` 토큰(로그인 전엔 보관만, 로그인 후 verify_token → 실패 사유 표시, 쿼리파라미터 제거, 성공 시 POOL 화면) ③ 대시보드: 뷰어는 공유받은 POOL만 ④ 상세·POOL 화면에 access 필터(범위 밖 후보·POOL 차단) ⑤ 공유 관리 화면(S-09: 발급 폼·링크 1회 표시·상태(유효/만료 임박/만료/회수)·회수·접속 이력) ⑥ 시드에 viewer@example.com → POOL1 공유 1건 ⑦ **테스트의 사용자 id를 역할별 실제 계정으로 교체**(`tests/helpers.user_for`) — refresh_user 도입 시 user_id=1(담당자)에 관리자 역할을 넣던 test_pages_render/test_pages_guard가 깨짐 ⑧ 뷰어 화면 테스트(범위 밖 후보 차단, 회수 즉시 차단).
@@ -131,3 +138,4 @@
 ## 작업 로그
 
 - 2026-09-11: 1단계 마무리(렌더 테스트 수정, README), git 초기화, 이어하기 장치 구축
+- 2026-09-11: 2-1 ~ 2-10 완료·커밋(테스트 269개 통과). 2-11 코드 작성 후 사용자 요청으로 중단 — WIP 커밋, 테스트 미실행

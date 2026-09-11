@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core import career
+from core import access, career
 from core import codes as CODES
 from core import considerations as CS
 from core import constants as C
@@ -17,7 +17,7 @@ from core import expertise as EXP
 from core import reputation as REP
 from core import scoring, screening, settings, state
 from core import sources as SRC
-from core.audit import log_access
+from core.audit import log_access, log_denied
 from core.auth import can_edit_pool, can_override_screening, can_review
 from core.guard import confidential_notice, require
 from data import repository
@@ -27,10 +27,13 @@ user = require("detail")
 st.title("후보 상세 프로파일")
 confidential_notice()
 
-# 후보 선택도 드롭다운으로 한다 (불변규칙 3)
-options = repository.list_person_options()
+# 후보 선택도 드롭다운으로 한다 (불변규칙 3). 외부뷰어는 공유받은 POOL 구성원만 (F-09-12)
+options = access.filter_person_options(user, repository.list_person_options())
 if not options:
-    st.info("후보 데이터가 없습니다. `python -m data.seed` 를 실행하세요.")
+    st.info(
+        "열람 가능한 후보가 없습니다." if user.is_viewer
+        else "후보 데이터가 없습니다. `python -m data.seed` 를 실행하세요."
+    )
     st.stop()
 
 name_by_id = dict(options)
@@ -43,7 +46,12 @@ picked = st.selectbox(
     list(name_by_id.keys()),
     index=list(name_by_id.keys()).index(selected),
     format_func=lambda pid: name_by_id[pid],
+    key="detail_person",
 )
+if not access.can_view_person(user, picked):  # 이중 확인 (부록 C #3)
+    log_denied(user.user_id, "detail", user.role)
+    st.error("열람 권한이 없는 후보입니다.")
+    st.stop()
 state.put(state.K_SELECTED_PERSON, picked)
 
 detail = repository.get_person_detail(picked)

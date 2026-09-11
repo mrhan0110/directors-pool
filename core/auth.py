@@ -101,6 +101,21 @@ def _to_current(user: AppUser) -> CurrentUser:
     )
 
 
+def refresh_user(user_id: int) -> CurrentUser | None:
+    """매 요청 DB 에서 계정을 다시 읽는다 (PRD F-09-11·12, 부록 C #2·#3).
+
+    세션에 저장된 역할·만료일을 그대로 믿지 않는다. 비활성화·접근 만료·역할 변경이
+    재로그인 없이 다음 요청부터 반영된다. 접근 불가면 None.
+    """
+    with session_scope() as s:
+        user = s.get(AppUser, user_id)
+        if user is None or not user.is_active:
+            return None
+        if user.expires_at is not None and user.expires_at < date.today():
+            return None
+        return _to_current(user)
+
+
 def get_provider() -> AuthProvider:
     name = os.getenv("AUTH_PROVIDER", "mock").lower()
     return OIDCAuthProvider() if name == "oidc" else MockAuthProvider()

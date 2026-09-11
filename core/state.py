@@ -25,6 +25,9 @@ K_EXPORT_SIG = "export.signature"
 K_REPORT = "report.pdf"               # 생성된 PDF(개인정보 포함 — 로그아웃 시 삭제)
 K_REPORT_SIG = "report.signature"
 K_SELECTED_PERSON = "nav.selected_person_id"
+K_SELECTED_POOL = "nav.selected_pool_id"
+K_PENDING_SHARE = "share.pending_token"   # 로그인 전 받은 공유 토큰(검증 전, 신뢰하지 않음)
+K_ISSUED_LINK = "share.issued_link"       # 방금 발급한 링크 1회 표시용
 K_COMPARE_BASKET = "nav.compare_basket"
 K_TOAST = "ui.toast"
 
@@ -111,6 +114,8 @@ def clear_user_scoped() -> None:
         K_REPORT,
         K_REPORT_SIG,
         K_SELECTED_PERSON,
+        K_SELECTED_POOL,
+        K_ISSUED_LINK,
         K_COMPARE_BASKET,
     ):
         st.session_state.pop(key, None)

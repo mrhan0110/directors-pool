@@ -35,6 +35,7 @@ from data.models import (
     PoolMember,
     Position,
     Reputation,
+    ShareLink,
     Source,
 )
 from data.session import init_db, session_scope
@@ -466,6 +467,20 @@ def _seed_pools(session, rng: random.Random) -> None:
             )
 
 
+def _seed_share() -> None:
+    """외부뷰어(viewer@example.com)에게 첫 POOL 을 공유한다 — 외부뷰어 화면 확인용 (PRD F-09-12)."""
+    from core import sharing
+
+    with session_scope() as s:
+        if s.execute(select(ShareLink.share_id).limit(1)).first():
+            return
+        pool_id = s.execute(select(Pool.pool_id).order_by(Pool.pool_id)).scalars().first()
+        staff_id = s.execute(select(AppUser.user_id).where(AppUser.email == "staff@example.com")).scalar()
+    if pool_id:
+        sharing.issue_link(pool_id, staff_id, "viewer@example.com", "(더미) 외부 사추위원 사전 검토",
+                           TODAY + timedelta(days=14))
+
+
 def run(reset: bool = False) -> None:
     rng = random.Random(SEED)
     init_db(drop=reset)
@@ -484,6 +499,8 @@ def run(reset: bool = False) -> None:
 
     with session_scope() as s:
         _seed_pools(s, rng)
+
+    _seed_share()
 
     stats = None
     if n_people:

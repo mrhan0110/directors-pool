@@ -31,7 +31,10 @@ PAGE_FILES = {
 
 
 def _user(role: str) -> CurrentUser:
-    return CurrentUser(user_id=1, email="t@example.com", display_name="테스트", role=role)
+    # 가드가 매 요청 DB 에서 계정을 다시 읽으므로 역할에 맞는 실제 시드 계정을 쓴다
+    from tests.helpers import user_for
+
+    return user_for(role)
 
 
 def _run(path: str, role: str | None):

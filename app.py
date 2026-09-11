@@ -19,8 +19,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from core import audit, constants as C, settings, state  # noqa: E402
-from core.auth import accessible_pages, get_provider, is_session_expired  # noqa: E402
+from core import audit, constants as C, settings, sharing, state  # noqa: E402
+from core.auth import accessible_pages, get_provider, is_session_expired, refresh_user  # noqa: E402
 from data import repository  # noqa: E402
 from data.session import init_db  # noqa: E402
 
@@ -124,10 +124,37 @@ PAGE_SPECS = [
 ]
 
 
+def _capture_share_token() -> None:
+    """?share=<토큰> 은 보관만 하고 주소창에서 즉시 지운다. 검증은 로그인 후에만 한다 (F-09-14)."""
+    token = st.query_params.get("share")
+    if token:
+        state.put(state.K_PENDING_SHARE, token)
+        del st.query_params["share"]
+
+
+def _consume_share_token(user) -> bool:
+    """로그인한 사용자의 이메일이 링크 수신자와 같을 때만 통과. 실패 사유는 그대로 알린다."""
+    token = state.get(state.K_PENDING_SHARE)
+    if not token:
+        return False
+    st.session_state.pop(state.K_PENDING_SHARE, None)
+    try:
+        _, pool_id = sharing.verify_token(token, user.user_id, user.email)
+    except sharing.ShareDenied as exc:
+        st.error(f"공유 링크로 접근할 수 없습니다 — {exc}")
+        return False
+    state.put(state.K_SELECTED_POOL, pool_id)
+    st.success("공유받은 POOL 을 열었습니다. 읽기 전용이며 다운로드할 수 없습니다.")
+    return True
+
+
 def main() -> None:
+    _capture_share_token()
     user = state.get(state.K_USER)
 
     if user is None:
+        if state.get(state.K_PENDING_SHARE):
+            st.info("공유 링크로 접속했습니다. 링크만으로는 열람할 수 없으며, 로그인 후 수신자 확인을 거칩니다.")
         render_login()
         return
 
@@ -139,9 +166,24 @@ def main() -> None:
         render_login()
         return
 
+    # 매 요청 계정 재검증 — 비활성화·만료·역할 변경 즉시 반영 (F-09-11·12)
+    fresh = refresh_user(user.user_id)
+    if fresh is None:
+        audit.log_access(user.user_id, C.ACT_LOGOUT, page="app", detail="account inactive or expired")
+        state.clear_user_scoped()
+        st.warning("계정이 비활성화되었거나 접근 기간이 만료되었습니다.")
+        render_login()
+        return
+    if fresh != user:
+        state.put(state.K_USER, fresh)
+        user = fresh
+
+    opened_pool = _consume_share_token(user)
+
     allowed = set(accessible_pages(user.role))
+    default_key = "pool" if opened_pool and "pool" in allowed else "dashboard"
     pages = [
-        st.Page(path, title=title, icon=icon, default=(key == "dashboard"))
+        st.Page(path, title=title, icon=icon, default=(key == default_key))
         for key, path, title, icon in PAGE_SPECS
         if key in allowed
     ]

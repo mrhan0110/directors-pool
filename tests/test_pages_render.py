@@ -14,6 +14,7 @@ from streamlit.testing.v1 import AppTest
 from core import constants as C
 from core.auth import CurrentUser
 from core.state import K_LAST_ACTIVE, K_USER
+from tests.helpers import user_for
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -34,9 +35,7 @@ ALL_PAGES = PAGES_WITH_TABLE + [
 
 def _run(path: str, role: str = C.ROLE_ADMIN):
     at = AppTest.from_file(str(PROJECT_ROOT / path), default_timeout=60)
-    at.session_state[K_USER] = CurrentUser(
-        user_id=1, email="admin@example.com", display_name="가상 관리자", role=role
-    )
+    at.session_state[K_USER] = user_for(role)
     at.session_state[K_LAST_ACTIVE] = datetime.now(timezone.utc)
     return at.run()
 
@@ -78,9 +77,7 @@ def test_search_page_has_no_text_input():
 def test_search_page_reports_truncation():
     """결과가 잘렸을 때 '전체 매칭 N명 중 상위 M명' 이 표기되는지 (PRD F-01-8)."""
     at = AppTest.from_file(str(PROJECT_ROOT / "pages/1_후보_검색.py"), default_timeout=60)
-    at.session_state[K_USER] = CurrentUser(
-        user_id=1, email="staff@example.com", display_name="가상 담당자", role=C.ROLE_STAFF
-    )
+    at.session_state[K_USER] = user_for(C.ROLE_STAFF)
     at.session_state[K_LAST_ACTIVE] = datetime.now(timezone.utc)
     at.session_state["search.result_limit_code"] = "N10"
     at.run()
@@ -119,8 +116,7 @@ def test_report_page_blocks_unreviewed_person():
     with session_scope() as s:
         pid = s.execute(select(Person.person_id).where(Person.profile_status == C.PROFILE_UNREVIEWED)).scalars().first()
     at = AppTest.from_file(str(PROJECT_ROOT / "pages/6_리포트.py"), default_timeout=60)
-    at.session_state[K_USER] = CurrentUser(user_id=1, email="staff@example.com", display_name="가상 담당자",
-                                           role=C.ROLE_STAFF)
+    at.session_state[K_USER] = user_for(C.ROLE_STAFF)
     at.session_state[K_LAST_ACTIVE] = datetime.now(timezone.utc)
     at.run()
     at.selectbox(key="report_person").set_value(pid).run()
