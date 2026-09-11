@@ -36,8 +36,17 @@ ui_style.inject()
 
 @st.cache_resource
 def bootstrap() -> dict:
-    """테이블 생성 및 기동 점검. 커넥션 캐시 성격이라 cache_resource 를 쓴다."""
+    """테이블 생성 및 기동 점검. 커넥션 캐시 성격이라 cache_resource 를 쓴다.
+
+    배포 환경(Streamlit Cloud 등)은 매번 빈 DB 로 시작하고 `python -m data.seed` 를
+    수동 실행할 셸 접근이 없으므로, 더미 모드에서 데이터가 비어 있으면 자동으로
+    한 번 시딩한다(PERSON_COUNT=200 기본값 기준 다소 시간이 걸릴 수 있다).
+    """
     init_db()
+    if os.getenv("DATA_MODE", "dummy").lower() != "live" and repository.person_count() == 0:
+        from data import seed
+
+        seed.run()
     return {"ok": True}
 
 
