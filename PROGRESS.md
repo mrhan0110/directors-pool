@@ -14,16 +14,39 @@
 ## 현재 상태
 
 - 1단계: ✅ 완료 (커밋 `1단계 완료`)
-- 2단계: 🔄 진행 중
+- 2단계: ✅ 완료 (2-1 ~ 2-14, DoD 검증 통과)
+- 3단계: ⏳ 착수 전 — `PROMPTS_단계별_개발.md`의 3단계 정의부터 읽을 것
 
 ## ▶ 다음 작업
 
-**2-14 DoD 검증부터 시작** (마지막 단위). `PROMPTS_단계별_개발.md`의 4단계(검토) 지시와 PRD §13 인수기준을 대조한다.
-1. 커버리지 ≥70%: `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=data --cov=batch --cov=collectors --cov-report=term-missing -p no:logging` (pytest-cov 미설치면 requirements.txt에 추가 후 설치)
-2. PRD §13 인수기준 1~9·15~17을 항목별로 실제 동작 확인(자동화된 테스트로 대체 가능한 항목은 어떤 테스트가 커버하는지 매핑, 수동 확인이 필요한 항목은 표시)
-3. 100명 조회 3초 이내 — `search()` 실측(간단한 타이밍 테스트나 수동 측정)
-4. README.md·CLAUDE.md 최신화(2단계 완료 반영, G 수집의 DART/뉴스/웹 실제 API 미구현 사실 명시)
-5. 전체 테스트 재실행 후 `2-14 DoD 검증 + 2단계 마무리` 커밋
+**2단계(기능 추가) 전체 완료.** 다음은 `PROMPTS_단계별_개발.md`의 3단계(UI 다듬기)다. 시작 전 3단계 정의를 먼저 읽을 것
+(임의로 시작하지 않는다 — CLAUDE.md 원칙). 3단계 착수 전 `python -m data.seed --reset`로 개발 DB를 최신 스키마로
+재생성해 두면(2-1 이후 스키마 변경 다수) 화면 확인이 수월하다.
+
+### 2-14 DoD 검증 결과 (2026-09-11)
+
+1. **커버리지**: `core`+`data`+`batch`+`collectors` 93% (목표 70% 이상 충족). `collectors/dart.py`·`news.py`·`web.py`의
+   실제 API 호출부만 0%— 키가 없어 의도적으로 미구현(README "알려진 제약" 참고). 재현: CLAUDE.md 명령어 절 참고.
+2. **PRD §13 인수기준 매핑** (1~9·15~17. 10~14는 §J 작업인 2-11에서 이미 검증 — test_pages_guard/test_viewer_pages/test_sharing):
+   - #1 드롭다운 전용 검색: `pages/1_후보_검색.py`에 `st.text_input` 없음 — `test_pages_render.py`가 검색 위젯 종류를 검증
+   - #2 목록에 성별·나이·현재직업·겸직수·스크리닝 표시: `core/search.py SearchRow` + `test_search_features.py`
+   - #3 최근10년+임원급, 초과분 자동제외: `core/career.py` + `test_career.py`(경계값 포함)
+   - #4 잔여임기 O년O개월: `Directorship.remaining_term_months` + `test_directorship_term.py`
+   - #5 전 사실항목 출처(무작위 20인 검사 0건): 스키마에서 `source_id NOT NULL`로 원천 차단(전수 검사가 표본검사보다 강함) +
+     `data.repository.source_integrity_report()` + `test_invariants.py::test_no_fact_without_source`
+   - #6 화이트리스트 밖 출처 유입 차단: `collectors/base.py assert_source_allowed` + `test_ingest.py::test_collected_fact_rejects_blocked_domain`
+   - #7 결격 후보 하단 분리: `core/search.py` 정렬(SCREEN_ORDER) — 2-4 설계결정 §F 참고
+   - #8 검수 미완료 PDF 차단: `reports/builder.check_export` + `test_report_gate.py` + `test_pages_render.py`(버튼 비활성 확인)
+   - #9 팩트 오류율 3% 이하: **자동화 대상 아님.** 합성 더미데이터 단계라 표본 오류율 측정 자체가 무의미하다.
+     운영 전환 후 실제 데이터로 사무국·검수자가 수행해야 하는 인적 프로세스로 남긴다
+   - #15 상위 N명 + `전체 매칭 N명 중 상위 M명 표시`: `core/search.py resolve_limit`/`shown` + `test_search_limit.py`
+   - #16 `전체` 선택 시 시스템 상한(기본 500) 초과 안내: `SET_RESULT_LIMIT_SYSTEM_MAX` + `test_search_limit.py`
+   - #17 100명 조회 3초 이내: 개발 DB(SQLite, 200명 시드)에서 `core.search.search({}, "N100", role=None)` 3회 실측
+     0.016~0.065초로 여유 있게 충족. **주의**: 운영 규모(PostgreSQL, 수천 명)에서는 재측정 필요 — 3단계 이후 실데이터
+     투입 시 다시 확인할 것
+3. **README.md·CLAUDE.md 갱신 완료**: 2단계 완료 상태, 배치 서브커맨드, 알려진 제약(라이브 수집기 미구현·SSO 미연동·PRD §14
+   미결 16건은 AppSetting 기본값으로 처리) 반영
+4. 전체 테스트 300여 건 통과 확인 후 이 커밋으로 2단계 마무리
 
 **(완료) 2-13 관리자 화면** (F-01-7). `core/codes.py`에 `all_categories/load_all/create_code/update_code`(코드는 삭제하지 않고 비활성화만, 변경 시 AuditLog `code` 엔티티에 `카테고리/코드` 형식으로 기록), `core/settings.list_all`(설명·법령근거 포함 전체 조회), `core/audit.history_of(entity, prefix)`(코드·설정 변경 이력 공용 조회), `data/repository.recent_access_logs`. `pages/7_관리자.py`를 실제 CRUD 폼으로 교체(드롭다운 코드 탭: 카테고리 선택 → 기존 코드 수정 폼 + 신규 추가 폼 + 변경이력 expander / 운영 파라미터 탭: 값 수정 폼 + 변경이력). 페이지에서 직접 SQL을 쓰던 기존 코드(탭 4개)도 이번에 repository/core 경유로 정리했다(계층 규칙 준수). `tests/test_admin.py` 10건(코드 CRUD 유효성·중복 거부·noop 무이력, 설정 이력, AppTest로 폼 제출까지 실제 클릭 경로 검증). 전체 테스트 299개 통과.
 
@@ -67,7 +90,7 @@
 - [x] 2-11 J 인증·공유: OIDC 인터페이스, 외부뷰어 POOL 범위 제한, 공유 링크 발급/회수/검증, 로그 — §J
 - [x] 2-12 G 수집: 더미/실제 모드, DART 클라이언트, 뉴스·웹, 인물 식별(동명이인 큐), 스냅샷, URL 점검, 보관기간 파기 — §G (DART/뉴스/웹 실제 API 호출부는 키 없어 미구현 상태 유지, 적재 파이프라인은 완성)
 - [x] 2-13 관리자: 코드 추가·수정·이력, 설정값 수정·이력 (F-01-7)
-- [ ] 2-14 DoD 검증: 커버리지 ≥70%, §13 인수기준 1~9·15~17, 100명 조회 3초, README·CLAUDE.md 갱신
+- [x] 2-14 DoD 검증: 커버리지 ≥70%(93%), §13 인수기준 1~9·15~17 매핑, 100명 조회 3초(0.02~0.07초), README·CLAUDE.md 갱신
 
 ## 설계 결정 (재분석 없이 이대로 구현)
 
@@ -152,4 +175,5 @@
 - 2026-09-11: 2-1 ~ 2-10 완료·커밋(테스트 269개 통과). 2-11 코드 작성 후 사용자 요청으로 중단 — WIP 커밋, 테스트 미실행
 - 2026-09-11: 세션 재개. 개발 환경에 git·`.venv`가 없어 새로 구축(winget으로 git 설치, `python -m venv .venv` + requirements 설치). 우발적으로 삭제돼 있던 `.streamlit/config.toml`·`secrets.toml.example`(CORS/XSRF 설정 포함, 2-11 작업과 무관)을 `git checkout --`으로 복구. 2-11 WIP 전체 테스트 통과 확인(exit code 0) → 2-11 완료 처리
 - 2026-09-11: 2-12 G 수집 구현·검증·커밋(테스트 289개 통과). `core/ingest.py` 신설(적재 파이프라인)
-- 2026-09-11: 2-13 관리자 화면 구현·검증·커밋(테스트 299개 통과). 다음은 2-14(DoD 검증, 2단계 마지막 단위)
+- 2026-09-11: 2-13 관리자 화면 구현·검증·커밋(테스트 299개 통과)
+- 2026-09-11: 2-14 DoD 검증 완료(커버리지 93%, §13 인수기준 매핑, 100명 조회 3초 이내 실측, README·CLAUDE.md 갱신) → 2단계 전체 완료. 다음은 3단계

@@ -11,7 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 저장소 현재 상태
 
-**1단계(기본 뼈대) 완료.** 다음 작업은 `PROMPTS_단계별_개발.md`의 2단계(기능 추가)다. 설치·실행 방법은 `README.md` 참고.
+**2단계(기능 추가) 완료.** 검색·상세·비교·POOL·검수·리포트·공유·관리자 화면과 스크리닝·전문분야 분류·적합도 점수·
+수집 적재 파이프라인(`core/ingest.py`)까지 실제 로직으로 동작한다. DART·뉴스·홈페이지의 **실제 API 호출**은
+키가 없어 `collectors/*.py`에 `NotImplementedError`로 남아 있다(더미 모드 파이프라인은 완성). 다음 작업은
+`PROMPTS_단계별_개발.md`의 3단계(UI 다듬기)다. 설치·실행 방법은 `README.md` 참고, 이어하기는 `PROGRESS.md` 참고.
 
 | 파일 | 역할 |
 |---|---|
@@ -75,9 +78,12 @@ python -m data.seed              # 합성 더미데이터 생성 (--reset: 전�
 streamlit run app.py             # 앱 실행
 pytest                           # 전체 테스트 (임시 SQLite 사용, 개발 DB 무관)
 pytest tests/test_pages_guard.py -v    # 파일 단위
+python -m batch.run analyze | classify | screen | score | collect | url-check | purge   # Streamlit 밖 배치 (F-09-8)
 ```
 
 `.venv`의 Python으로 실행한다. 전역 Python에서는 `langsmith` pytest 플러그인이 기동을 막으므로 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`이 필요하다.
+같은 이유로 이 환경변수는 `pytest-cov`의 자동 등록도 막으므로, 커버리지 측정 시에는
+`pytest -p pytest_cov.plugin -p no:logging --cov=core --cov=data --cov=batch --cov=collectors` 처럼 `-p`로 명시한다.
 
 ## 기술 스택 (PRD §8 확정안)
 
