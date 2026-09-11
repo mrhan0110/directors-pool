@@ -21,6 +21,7 @@ load_dotenv()
 
 from core import audit, constants as C, settings, sharing, state  # noqa: E402
 from core.auth import accessible_pages, get_provider, is_session_expired, refresh_user  # noqa: E402
+from core.ui import style as ui_style  # noqa: E402
 from data import repository  # noqa: E402
 from data.session import init_db  # noqa: E402
 
@@ -30,6 +31,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+ui_style.inject()
 
 
 @st.cache_resource

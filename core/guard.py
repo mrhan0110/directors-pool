@@ -13,6 +13,7 @@ import streamlit as st
 
 from core import audit, constants as C, settings, state
 from core.auth import CurrentUser, can_access, can_download, is_session_expired, refresh_user
+from core.ui.components import confidential_banner
 
 
 def current_user() -> CurrentUser | None:
@@ -71,7 +72,7 @@ def confidential_notice() -> None:
     """대외비 고지 + 열람자·일시 표시 (F-09-17). 화면 캡처가 반출돼도 출처를 추적할 수 있게 한다."""
     user = current_user()
     stamp = f" · 열람자 {user.email} · {datetime.now():%Y-%m-%d %H:%M}" if user else ""
-    st.caption(
+    confidential_banner(
         "대외비 · 본 자료는 공개정보 기반 참고자료이며, 최종 판단은 담당자·법무 검토로 확정됩니다." + stamp
     )
 

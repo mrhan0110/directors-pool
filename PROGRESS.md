@@ -19,9 +19,26 @@
 
 ## ▶ 다음 작업
 
-**2단계(기능 추가) 전체 완료.** 다음은 `PROMPTS_단계별_개발.md`의 3단계(UI 다듬기)다. 시작 전 3단계 정의를 먼저 읽을 것
-(임의로 시작하지 않는다 — CLAUDE.md 원칙). 3단계 착수 전 `python -m data.seed --reset`로 개발 DB를 최신 스키마로
-재생성해 두면(2-1 이후 스키마 변경 다수) 화면 확인이 수월하다.
+**3단계(UI 디자인) 진행 중.** 기능·데이터 로직은 바꾸지 않는다. 발견한 기능 버그는 고치지 말고 목록만 남겨
+4단계로 넘긴다(`PROMPTS_단계별_개발.md` 3단계 프롬프트 "하지 말 것"). 개발 중 화면은 Playwright 로 스크린샷해서
+사용자에게 보여준다(스크립트: 스크래치패드 `pw_shot.py`, 서버는 `streamlit run app.py --server.port 8501` 백그라운드).
+
+### 3단계 작업 단위 체크리스트
+
+- [ ] 3-1 전역 스타일: `.streamlit/config.toml` 테마 확정, `core/ui/style.py`(CSS 한 곳 주입), app.py 에서 1회 주입
+- [ ] 3-2 재사용 컴포넌트 `core/ui/components.py`: status_badge/source_popover/metric_card/candidate_card/term_gauge/confidential_banner/result_count_banner
+- [ ] 3-3 S-01 대시보드 + S-02 검색: 배너·배지 컴포넌트 적용, 성별·연령 분포 차트(Altair)
+- [ ] 3-4 S-04 상세: 출처를 expander→popover 로, 요약헤더 정리, 잔여임기 게이지, 경력 타임라인 차트
+- [ ] 3-5 S-03 비교 + S-05 POOL 칸반 + S-06 검수 3분할 다듬기
+- [ ] 3-6 S-07 리포트 + S-08 관리자 + S-09 공유관리 표 다듬기, S-00 로그인 다듬기
+- [ ] 3-7 DoD 검증(전 화면 통일 테마·1280px 무가로스크롤·스타일 코드 core/ui/ 집중) + 발견된 기능 버그 목록 정리 + 커밋
+
+### 3단계 참고
+- Playwright: `.venv`에 설치됨(`pip install playwright` + `playwright install chromium`). 서버는 `Start-Process`로 백그라운드
+  실행(`streamlit_out.log`/`streamlit_err.log`), 스크린샷은 스크래치패드 `pw_shot.py <출력.png> [--email] [--nav]`.
+- 화면 렌더 테스트(`tests/test_pages_render.py`)는 문구·구조를 일부 단언하므로 UI 변경 후 반드시 재확인.
+
+**(참고) 2단계(기능 추가) 전체 완료 — 아래는 완료된 2단계 기록.**
 
 ### 2-14 DoD 검증 결과 (2026-09-11)
 

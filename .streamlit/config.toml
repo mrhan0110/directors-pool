@@ -1,9 +1,11 @@
 [theme]
-# 3단계에서 확정. 1단계는 기본 톤만 지정
+# 사추위·이사회 보고자료에 어울리는 절제된 톤 (PRD 3단계 디자인 원칙 1). 나머지 세부 스타일은
+# core/ui/style.py 한 곳에서 주입한다(3단계 §A).
 primaryColor = "#1F4E79"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F4F6F8"
 textColor = "#1A1A1A"
+font = "sans serif"
 
 [server]
 headless = true
