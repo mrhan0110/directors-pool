@@ -30,6 +30,15 @@ class CareerView:
     excluded_count: int         # 규칙에 의해 제외된 건수 (화면에 사유 안내용)
 
 
+def remaining_label(months: int | None) -> str:
+    """잔여 임기 표기 'O년 O개월' (PRD F-03-1). 미상·이미 만료도 구분해 표기한다."""
+    if months is None:
+        return "임기 만료일 미상"
+    if months < 0:
+        return f"이미 만료 ({abs(months)}개월 경과)"
+    return f"{months // 12}년 {months % 12}개월"
+
+
 def is_executive(p: Position) -> bool:
     return bool(p.is_registered_officer) or (p.role_level in EXECUTIVE_LEVELS)
 

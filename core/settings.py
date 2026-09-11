@@ -203,6 +203,12 @@ DEFAULTS: list[dict] = [
         "description": "언론 출처 최신성 기준(년). 초과 시 '구 정보' 배지",
     },
     {
+        "key": C.SET_DISCLOSURE_FRESH_DAYS,
+        "value": "460",
+        "value_type": "int",
+        "description": "공시자료 최신성 기준(발행일로부터 일). 다음 사업보고서가 나왔을 시점을 넘기면 '구 정보' 배지",
+    },
+    {
         "key": C.SET_WEB_FRESH_DAYS,
         "value": "365",
         "value_type": "int",

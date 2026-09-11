@@ -158,6 +158,7 @@ SET_W_RISK = "score.weight.risk_penalty"
 
 # 출처 최신성 (PRD F-05-4)
 SET_NEWS_FRESH_YEARS = "source.news_fresh_years"
+SET_DISCLOSURE_FRESH_DAYS = "source.disclosure_fresh_days"
 SET_WEB_FRESH_DAYS = "source.web_fresh_days"
 
 # 인물 식별 — 이 점수 미만이면 자동 결합하지 않고 수기 확인 큐로 (PRD §11)

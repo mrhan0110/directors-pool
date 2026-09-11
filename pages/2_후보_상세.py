@@ -1,17 +1,25 @@
-"""S-04 후보 상세 프로파일 (PRD F-03).
+"""S-04 후보 상세 프로파일 (PRD F-03, F-04-3·4, F-05-2·3·4, F-06).
 
-모든 사실 항목에는 출처 접근 경로가 함께 있어야 한다 (F-05-2).
+- 모든 사실 항목 옆에 출처(발행처·문서명·발행일·URL·수집일)를 둔다 (F-05-1·2, F-09-6).
+- 근거 스니펫이 없는 전문분야는 표시하지 않는다 (EXP.displayable, 불변규칙 2).
+- 판정·집계 로직은 core/ 에 있고 이 파일은 표현만 담당한다.
 """
 
 from __future__ import annotations
 
-from datetime import date
-
 import streamlit as st
 
-from core import career, codes as CODES, constants as C, settings, state
+from core import career
+from core import codes as CODES
+from core import considerations as CS
+from core import constants as C
+from core import expertise as EXP
+from core import reputation as REP
+from core import scoring, screening, settings, state
+from core import sources as SRC
 from core.audit import log_access
-from core.guard import confidential_notice, require, stage_notice
+from core.auth import can_edit_pool, can_override_screening, can_review
+from core.guard import confidential_notice, require
 from data import repository
 
 user = require("detail")
@@ -40,52 +48,129 @@ state.put(state.K_SELECTED_PERSON, picked)
 
 detail = repository.get_person_detail(picked)
 if detail is None:
-    st.error("후보 정보를 찾을 수 없습니다.")
+    st.warning("후보 정보를 찾을 수 없습니다.")
     st.stop()
 
 log_access(user.user_id, C.ACT_VIEW, page="detail", target_person_ids=[picked])
 
 p = detail.person
 sources = detail.sources
+policy = SRC.FreshnessPolicy.load()
+conflicts = SRC.conflict_index(SRC.conflicts_of(picked))
+score_row = scoring.get(picked)
 
 
-def source_block(source_id: int) -> None:
-    src = sources.get(source_id)
+def show_source(src, label: str = "출처 보기") -> None:
     if src is None:
         st.error("출처 정보가 없습니다. 표시되어서는 안 되는 데이터입니다. (PRD F-05-1)")
         return
-    with st.expander("출처 보기"):
-        st.markdown(f"**{src.publisher}** · 「{src.doc_title}」")
-        st.caption(
-            f"발행일 {src.published_date.isoformat() if src.published_date else '미상'}"
-            f" · 신뢰등급 {src.source_tier}"
-            f" · 수집일 {src.collected_at.date().isoformat()}"
-        )
-        st.markdown(f"[{src.url}]({src.url})")
+    old = SRC.is_outdated(src, policy)
+    with st.expander(f"{label} · {src.source_tier}등급" + (f" · {SRC.OUTDATED_LABEL}" if old else "")):
+        st.caption(src.citation())
+        st.markdown(f"[원문 열기]({src.url})")
         if src.quote_snippet:
             st.caption(f"인용: {src.quote_snippet}")
+        if old:
+            st.caption("최신성 기준을 넘은 출처입니다. 최신 자료로 재확인이 필요합니다. (PRD F-05-4)")
 
+
+def source_block(source_id: int) -> None:
+    show_source(sources.get(source_id))
+
+
+def conflict_note(entity: str, entity_id: int) -> None:
+    """출처 간 상충 정보를 숨기지 않고 병기한다 (F-05-3)."""
+    for c in conflicts.get((entity, entity_id), []):
+        alt = c.alt_source
+        st.caption(
+            f"⚠ 대체 정보: {c.field} '{c.alt_value}' — {alt.publisher if alt else '출처 미상'}"
+            f"({alt.source_tier if alt else '-'}등급). 상위 등급 출처의 '{c.adopted_value}'을(를) 채택했습니다."
+        )
+        show_source(alt, label="대체 정보 출처")
+
+
+def source_cols(source_id: int) -> dict:
+    src = sources.get(source_id)
+    if src is None:
+        return {"출처": None, "출처 정보": "출처 없음"}
+    info = f"{src.publisher} · {src.published_date.isoformat() if src.published_date else '발행일 미상'} · {src.source_tier}등급"
+    if SRC.is_outdated(src, policy):
+        info += f" · {SRC.OUTDATED_LABEL}"
+    return {"출처": src.url, "출처 정보": info}
+
+
+LINK = {"출처": st.column_config.LinkColumn("출처", display_text="원문")}
 
 # ------------------------------------------------------------------ 요약 헤더
-badge = C.SCREEN_BADGE[
-    max(
-        (s.result for s in detail.screenings),
-        key=lambda r: C.SCREEN_ORDER.get(r, 0),
-        default=C.SCREEN_PASS,
-    )
-]
-h1, h2, h3, h4 = st.columns(4)
+
+status = screening.worst([screening.effective(s) for s in detail.screenings])
+current = [pos for pos in detail.positions if pos.is_current]
+h1, h2, h3, h4, h5 = st.columns(5)
 h1.metric("성명", p.name_ko)
 h2.metric("나이", f"만 {p.age()}세{'(추정)' if p.age_estimated_yn else ''}" if p.age() else "-")
-h3.metric("스크리닝", badge)
-h4.metric("검수 상태", p.profile_status)
+h3.metric("스크리닝", C.SCREEN_BADGE[status])
+h4.metric("적합도(기본)", scoring.display(score_row.base_score if score_row else None))
+h5.metric("검수 상태", p.profile_status)
+st.caption(
+    (f"{p.name_en} · " if p.name_en else "")
+    + "현직: " + (", ".join(f"{pos.org_name} {pos.title}" for pos in current) or "없음")
+)
+st.caption(scoring.DISCLAIMER)
 
 if p.profile_status != C.PROFILE_REVIEWED:
     st.warning("검수 미완료 프로파일입니다. 외부 보고용 출력이 차단됩니다. (PRD F-08-1)", icon="⚠️")
+if status == C.SCREEN_FAIL:
+    st.warning("스크리닝에서 결격 가능 판정이 있습니다. 아래 ⑦의 룰별 판정과 법무 검토를 확인하세요.")
 
 st.divider()
 
+# ------------------------------------------------------------------ 전문분야 (F-04-3·4)
+
+st.subheader("전문분야 (자동 분류)")
+shown_exp = sorted(EXP.displayable(detail.expertises, sources), key=lambda e: (not e.is_primary, -e.score))
+if not shown_exp:
+    st.caption("근거가 확인된 전문분야가 없습니다.")
+for e in shown_exp:
+    label = CODES.label_of(C.CODE_EXPERTISE_L2, e.taxonomy_code)
+    st.markdown(
+        f"**{label}** · {'대표' if e.is_primary else '보조'} · 신뢰도 {e.confidence} · 근거 {e.evidence_count}건"
+        + (" · 담당자 확정" if e.confirmed_by_user_yn else "")
+    )
+    st.caption(f"근거: “{e.evidence_snippet}”")
+    source_block(e.source_id)
+
+if can_edit_pool(user.role) and shown_exp:
+    with st.expander("전문분야 수정·확정 (PRD F-04-4)"):
+        codes = [e.taxonomy_code for e in shown_exp]
+        code = st.selectbox("대상 전문분야", codes, format_func=lambda c: CODES.label_of(C.CODE_EXPERTISE_L2, c))
+        target = next(e for e in shown_exp if e.taxonomy_code == code)
+        c1, c2 = st.columns(2)
+        if c1.button("확정", disabled=target.confirmed_by_user_yn, width="stretch"):
+            EXP.confirm(picked, code, user.user_id)
+            st.rerun()
+        if c2.button("보조로 지정" if target.is_primary else "대표로 지정", width="stretch"):
+            try:
+                EXP.set_primary(picked, code, not target.is_primary, user.user_id)
+                st.rerun()
+            except ValueError as exc:
+                st.warning(str(exc))
+        reason = st.text_input("삭제 사유 (필수)", key="exp_remove_reason")
+        if st.button("이 전문분야 삭제"):
+            try:
+                EXP.remove(picked, code, user.user_id, reason)
+                st.rerun()
+            except ValueError as exc:
+                st.warning(str(exc))
+        hist = EXP.history_of(picked)[:10]
+        if hist:
+            st.dataframe(
+                [{"일시": h.occurred_at.strftime("%Y-%m-%d %H:%M"), "전문분야": h.taxonomy_code,
+                  "처리": h.action, "이전": h.before_value or "-", "이후": h.after_value or "-"} for h in hist],
+                hide_index=True, width="stretch",
+            )
+
 # ------------------------------------------------------------------ (1) 기본 정보
+
 st.subheader("① 기본 정보")
 b1, b2 = st.columns(2)
 with b1:
@@ -107,8 +192,8 @@ with b2:
     )
 
 # ------------------------------------------------------------------ (2) 현재 직업
+
 st.subheader("② 현재 직업")
-current = [pos for pos in detail.positions if pos.is_current]
 if not current:
     st.caption("현직 정보가 없습니다.")
 for pos in current:
@@ -121,9 +206,11 @@ for pos in current:
     )
     if pos.duties:
         st.caption(f"담당 업무: {pos.duties}")
+    conflict_note("position", pos.position_id)
     source_block(pos.source_id)
 
 # ------------------------------------------------------------------ (3) 과거 직업
+
 lookback = settings.get_int(C.SET_CAREER_LOOKBACK_YEARS)
 st.subheader(f"③ 과거 직업 — 최근 {lookback}개년, 임원급 이상 주요 보직")
 view = career.build_view([pos for pos in detail.positions if not pos.is_current])
@@ -132,16 +219,18 @@ if view.recent:
         [
             {
                 "기간": f"{pos.start_date.isoformat() if pos.start_date else '-'} ~ "
-                f"{pos.end_date.isoformat() if pos.end_date else '현재'}",
+                f"{pos.end_date.isoformat() if pos.end_date else '미상'}",
                 "기관": pos.org_name,
                 "직위": pos.title,
                 "등기/미등기": "등기" if pos.is_registered_officer else "미등기",
                 "주요 역할": pos.duties or "-",
+                **source_cols(pos.source_id),
             }
             for pos in view.recent
         ],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
+        column_config=LINK,
     )
 else:
     st.caption("표출 기준에 해당하는 과거 경력이 없습니다.")
@@ -153,15 +242,16 @@ if view.highlights:
             f"- {pos.start_date.year if pos.start_date else '-'}"
             f"~{pos.end_date.year if pos.end_date else '-'} · {pos.org_name} {pos.title}"
         )
+        source_block(pos.source_id)
 
 if view.excluded_count:
     st.caption(
         f"표출 기준(최근 {lookback}년 + 임원급 이상)에 해당하지 않아 제외된 이력 "
         f"{view.excluded_count}건이 있습니다."
     )
-stage_notice("경력 타임라인 시각화는 3단계(C)에서 추가합니다.")
 
 # ------------------------------------------------------------------ (4) 타사 등기임원
+
 st.subheader("④ 현재 타사 등기임원 수행 현황")
 limit = settings.get_int(C.SET_CONCURRENT_LIMIT)
 alert_months = settings.get_int(C.SET_TERM_ALERT_MONTHS)
@@ -178,77 +268,167 @@ if listed_count > limit:
 if not current_dirs:
     st.caption("현재 수행 중인 타사 등기임원직이 없습니다.")
 else:
+    imminent = []
+    table = []
     for d in current_dirs:
         remaining = d.remaining_term_months()
-        if remaining is None:
-            remain_label = "임기 만료일 미상"
-        elif remaining < 0:
-            remain_label = f"이미 만료 ({abs(remaining)}개월 경과)"
-        else:
-            remain_label = f"{remaining // 12}년 {remaining % 12}개월"
-
-        header = f"**{d.company_name}** ({'상장' if d.listed_yn else '비상장'}) · {d.role_type}"
-        if remaining is not None and 0 <= remaining <= alert_months:
-            st.markdown(f"{header} — :red[잔여 {remain_label}]")
-        else:
-            st.markdown(f"{header} — 잔여 {remain_label}")
-        st.caption(
-            f"선임일 {d.appointed_date.isoformat() if d.appointed_date else '-'}"
-            f" · 임기 만료 {d.term_end_date.isoformat() if d.term_end_date else '미상'}"
-            f" · 위원회 {', '.join(d.committee_roles) or '-'}"
-            f" · 직전 사업연도 이사회 출석률 "
-            f"{f'{d.board_attendance_rate:.0%}' if d.board_attendance_rate is not None else '-'}"
+        soon = remaining is not None and 0 <= remaining <= alert_months
+        if soon:
+            imminent.append(f"{d.company_name}({career.remaining_label(remaining)})")
+        table.append(
+            {
+                "회사명": d.company_name,
+                "상장": "상장" if d.listed_yn else "비상장",
+                "직위": d.role_type,
+                "선임일": d.appointed_date.isoformat() if d.appointed_date else "-",
+                "임기 만료일": d.term_end_date.isoformat() if d.term_end_date else "미상",
+                "잔여 임기": ("⚠ " if soon else "") + career.remaining_label(remaining),
+                "위원회": ", ".join(d.committee_roles) or "-",
+                "이사회 출석률": f"{d.board_attendance_rate:.0%}" if d.board_attendance_rate is not None else "-",
+                **source_cols(d.source_id),
+            }
         )
-        source_block(d.source_id)
+    if imminent:
+        st.warning(f"잔여 임기 {alert_months}개월 이내: " + ", ".join(imminent) + " (PRD F-03-1)")
+    st.dataframe(table, hide_index=True, width="stretch", column_config=LINK)
+    st.caption("이사회 출석률은 직전 사업연도 사업보고서 공시 기준입니다. (PRD F-03-3)")
 
 if past_dirs:
-    with st.expander(f"종료된 등기임원 이력 {len(past_dirs)}건"):
-        for d in past_dirs:
-            st.write(f"- {d.company_name} · {d.role_type}")
+    with st.expander(f"종료된 등기임원 이력 {len(past_dirs)}건 (PRD F-03-4)"):
+        st.dataframe(
+            [
+                {
+                    "회사명": d.company_name,
+                    "직위": d.role_type,
+                    "선임일": d.appointed_date.isoformat() if d.appointed_date else "-",
+                    "종료": d.term_end_date.isoformat() if d.term_end_date else "미상",
+                    **source_cols(d.source_id),
+                }
+                for d in past_dirs
+            ],
+            hide_index=True,
+            width="stretch",
+            column_config=LINK,
+        )
 
 # ------------------------------------------------------------------ (5) 평판
+
 st.subheader("⑤ 평판")
+st.caption("확인된 사실만 판단에 사용합니다. 미확인 보도는 구분 표기하며 자동 점수에 반영하지 않습니다.")
 if not detail.reputations:
     st.caption("수집된 평판 정보가 없습니다.")
-for r in detail.reputations:
-    tag = {"긍정": "🟢", "중립": "⚪", "부정": "🔴"}.get(r.polarity, "⚪")
-    verified = "확인됨" if r.verified_yn else "사실관계 미확인"
-    st.markdown(f"{tag} **{r.category or r.polarity}** · {r.summary}")
-    st.caption(
-        f"{r.event_date.isoformat() if r.event_date else '-'}"
-        f" · 진행경과 {r.status or '-'} · {verified}"
-    )
-    if not r.verified_yn:
-        st.caption("※ 미확인 건은 평판 점수에 반영하지 않습니다. (PRD F-03 (5))")
-    source_block(r.source_id)
+else:
+    sig = REP.signals(detail.reputations)
+    s1, s2, s3 = st.columns(3)
+    s1.metric("확인된 보도", f"{sig.verified}건")
+    s2.metric("사실관계 미확인", f"{sig.unverified}건")
+    s3.metric("확인된 부정 이슈", f"{sig.verified_negative}건")
+    if sig.by_year:
+        st.dataframe(
+            [{"연도": y, **counts} for y, counts in sig.by_year.items()], hide_index=True, width="stretch"
+        )
+    if sig.topics:
+        st.caption("주요 언급 주제: " + ", ".join(f"{t}({n})" for t, n in sig.topics))
+
+    for r in detail.reputations:
+        tag = {"긍정": "🟢", "중립": "⚪", "부정": "🔴"}.get(r.polarity, "⚪")
+        verified = "확인됨" if r.verified_yn else "사실관계 미확인"
+        st.markdown(f"{tag} **{r.category or r.polarity}** · {verified}")
+        if r.polarity == "부정":
+            parts = REP.status_parts(r)
+            st.caption(" · ".join(f"{k}: {v}" for k, v in parts.items()))
+        else:
+            st.caption(f"{r.summary} · {r.event_date.isoformat() if r.event_date else '-'}")
+        source_block(r.source_id)
+st.caption("거버넌스 이력(과거 이사회 반대·기권 의결, 주총 부결·자문사 반대 권고): 수집된 이력 없음")
 
 # ------------------------------------------------------------------ (6) 주요 업적
+
 st.subheader("⑥ 주요 업적")
 if not detail.achievements:
     st.caption("수집된 업적 정보가 없습니다.")
 for a in detail.achievements:
     st.markdown(f"**{a.category or '-'}** · {a.description}")
-    st.caption(f"{a.period or '-'} · 지표: {a.quantitative_metric or '-'}")
+    st.caption(f"{a.period or '-'} · 정량 지표: {a.quantitative_metric or '-'}")
     source_block(a.source_id)
 
 # ------------------------------------------------------------------ (7) 선정 고려사항
+
 st.subheader("⑦ 선정 고려사항")
-st.caption("이사회 관리 담당자가 후보 선정 시 확인해야 할 항목입니다. (PRD F-03 (7), 18개 항목)")
-if detail.screenings:
-    st.dataframe(
-        [
-            {
-                "룰": s.rule_id,
-                "검증 항목": C.SCREENING_RULES.get(s.rule_id, "-"),
-                "판정": C.SCREEN_BADGE.get(s.result, s.result),
-                "사유": s.reason or "-",
-            }
-            for s in sorted(detail.screenings, key=lambda x: x.rule_id)
-        ],
-        hide_index=True,
-        use_container_width=True,
-    )
-stage_notice(
-    "고려사항 18개 체크리스트(자동 판정 신호등 + 수기 확인란 + 코멘트/첨부)는 "
-    "2단계(C·E)에서 구현합니다. 현재는 더미 스크리닝 판정만 표시합니다."
+st.caption("이사회 관리 담당자가 후보 선정 시 확인해야 할 18개 항목입니다. (PRD F-03 (7))")
+items = CS.evaluate(detail, score_row.breakdown if score_row else None)
+checks = CS.get_checks(picked)
+st.dataframe(
+    [
+        {
+            "#": it.no,
+            "고려사항": it.title,
+            "방식": it.mode,
+            "자동 판정": C.SCREEN_BADGE.get(it.signal, "-") if it.signal else "수기 확인",
+            "근거·참고": it.auto_text or "-",
+            "수기 상태": checks[it.no].status if it.no in checks and checks[it.no].status else "-",
+            "코멘트": checks[it.no].comment if it.no in checks and checks[it.no].comment else "-",
+            "첨부": checks[it.no].attachment_name if it.no in checks and checks[it.no].attachment_name else "-",
+        }
+        for it in items
+    ],
+    hide_index=True,
+    width="stretch",
 )
+
+if can_review(user.role):
+    with st.form("consideration_form", clear_on_submit=True):
+        st.markdown("**수기 확인·코멘트 등록** (PRD F-03-5)")
+        titles = {it.no: it.title for it in items}
+        no = st.selectbox("항목", list(titles), format_func=lambda n: f"{n}. {titles[n]}")
+        chk_status = st.selectbox("확인 상태", CS.MANUAL_STATUSES)
+        comment = st.text_area("코멘트")
+        upload = st.file_uploader("첨부 (레퍼런스 체크 메모 등)")
+        if st.form_submit_button("저장"):
+            try:
+                CS.save_check(
+                    picked, no, user.user_id, status=chk_status, comment=comment,
+                    attachment_name=upload.name if upload else None,
+                    attachment=upload.getvalue() if upload else None,
+                )
+                st.success("저장했습니다.")
+            except ValueError as exc:
+                st.warning(str(exc))
+
+with st.expander("스크리닝 룰별 판정 (PRD §5.1)"):
+    if detail.screenings:
+        st.dataframe(
+            [
+                {
+                    "룰": s.rule_id,
+                    "검증 항목": C.SCREENING_RULES.get(s.rule_id, "-"),
+                    "자동 판정": C.SCREEN_BADGE.get(s.result, s.result),
+                    "수기 판정": C.SCREEN_BADGE.get(s.reviewer_override, "-") if s.reviewer_override else "-",
+                    "사유": s.reason or "-",
+                    "수기 판정 사유": s.override_reason or "-",
+                }
+                for s in sorted(detail.screenings, key=lambda x: x.rule_id)
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+    else:
+        st.caption("스크리닝 결과가 없습니다. 배치(`python -m batch.run analyze`)를 실행하세요.")
+    st.caption("자동 판정은 1차 스크리닝이며 최종 적격성은 법무 검토로 확정합니다.")
+
+    if can_override_screening(user.role) and detail.screenings:
+        with st.form("override_form", clear_on_submit=True):
+            st.markdown("**법무 수기 판정 입력**")
+            rule_ids = [s.rule_id for s in sorted(detail.screenings, key=lambda x: x.rule_id)]
+            rule_id = st.selectbox("룰", rule_ids, format_func=lambda r: f"{r} {C.SCREENING_RULES.get(r, '')}")
+            choices = ["해제", C.SCREEN_PASS, C.SCREEN_WARN, C.SCREEN_FAIL]
+            result = st.selectbox("판정", choices, format_func=lambda c: C.SCREEN_BADGE.get(c, "수기 판정 해제"))
+            reason = st.text_area("판정 사유 (필수)")
+            if st.form_submit_button("저장"):
+                try:
+                    screening.set_override(picked, rule_id, None if result == "해제" else result, reason)
+                    scoring.store(picked)  # 리스크 감점 재산출
+                    st.success("저장했습니다.")
+                    st.rerun()
+                except ValueError as exc:
+                    st.warning(str(exc))
