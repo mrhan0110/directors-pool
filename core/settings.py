@@ -239,6 +239,12 @@ def get_all() -> dict[str, str]:
         return {row.key: row.value for row in s.execute(select(AppSetting)).scalars()}
 
 
+def list_all() -> list[AppSetting]:
+    """관리자 화면 표시용 전체 행(설명·법령근거·최종변경 포함)."""
+    with session_scope() as s:
+        return list(s.execute(select(AppSetting).order_by(AppSetting.key)).scalars())
+
+
 def get_raw(key: str) -> str | None:
     with session_scope() as s:
         row = s.get(AppSetting, key)

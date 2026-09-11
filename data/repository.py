@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from core import constants as C
 from data.models import (
+    AccessLog,
     Achievement,
     AppUser,
     Directorship,
@@ -185,6 +186,13 @@ def pool_member_counts() -> dict[int, int]:
 def list_users() -> list[AppUser]:
     with session_scope() as s:
         return list(s.execute(select(AppUser).order_by(AppUser.user_id)).scalars())
+
+
+def recent_access_logs(limit: int = 200) -> list[AccessLog]:
+    with session_scope() as s:
+        return list(
+            s.execute(select(AccessLog).order_by(AccessLog.occurred_at.desc()).limit(limit)).scalars()
+        )
 
 
 def source_integrity_report() -> dict[str, int]:

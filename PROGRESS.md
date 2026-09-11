@@ -18,8 +18,14 @@
 
 ## ▶ 다음 작업
 
-**2-13 관리자 화면부터 시작** (F-01-7). `pages/`에 관리자 전용 화면 추가: CodeMaster 코드 추가·수정·비활성화(+ 변경 이력), AppSetting 값 수정(+ 변경 이력, `core/settings.set_value`는 이미 있음 — 화면만 없음). 관리자 화면 상단에서도 `guard.require(role=ROLE_ADMIN)` 재검증할 것(불변규칙 5). 코드/설정 변경은 AuditLog에 남겨야 한다(기존 `log_change` 재사용).
-- 완료 후: 테스트 통과 → 체크 → `2-13 관리자 화면` 커밋 → 2-14(DoD 검증)로.
+**2-14 DoD 검증부터 시작** (마지막 단위). `PROMPTS_단계별_개발.md`의 4단계(검토) 지시와 PRD §13 인수기준을 대조한다.
+1. 커버리지 ≥70%: `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=data --cov=batch --cov=collectors --cov-report=term-missing -p no:logging` (pytest-cov 미설치면 requirements.txt에 추가 후 설치)
+2. PRD §13 인수기준 1~9·15~17을 항목별로 실제 동작 확인(자동화된 테스트로 대체 가능한 항목은 어떤 테스트가 커버하는지 매핑, 수동 확인이 필요한 항목은 표시)
+3. 100명 조회 3초 이내 — `search()` 실측(간단한 타이밍 테스트나 수동 측정)
+4. README.md·CLAUDE.md 최신화(2단계 완료 반영, G 수집의 DART/뉴스/웹 실제 API 미구현 사실 명시)
+5. 전체 테스트 재실행 후 `2-14 DoD 검증 + 2단계 마무리` 커밋
+
+**(완료) 2-13 관리자 화면** (F-01-7). `core/codes.py`에 `all_categories/load_all/create_code/update_code`(코드는 삭제하지 않고 비활성화만, 변경 시 AuditLog `code` 엔티티에 `카테고리/코드` 형식으로 기록), `core/settings.list_all`(설명·법령근거 포함 전체 조회), `core/audit.history_of(entity, prefix)`(코드·설정 변경 이력 공용 조회), `data/repository.recent_access_logs`. `pages/7_관리자.py`를 실제 CRUD 폼으로 교체(드롭다운 코드 탭: 카테고리 선택 → 기존 코드 수정 폼 + 신규 추가 폼 + 변경이력 expander / 운영 파라미터 탭: 값 수정 폼 + 변경이력). 페이지에서 직접 SQL을 쓰던 기존 코드(탭 4개)도 이번에 repository/core 경유로 정리했다(계층 규칙 준수). `tests/test_admin.py` 10건(코드 CRUD 유효성·중복 거부·noop 무이력, 설정 이력, AppTest로 폼 제출까지 실제 클릭 경로 검증). 전체 테스트 299개 통과.
 
 **(완료) 2-12 G 수집.** `core/ingest.py` 신설 — 더미/실제 공용 적재 파이프라인:
 - 인물 식별 `resolve_person`/`get_or_create_person`: 이름 완전일치 후보를 생년월(±0.5)+소속이력 겹침(±0.5)+성별(+0.1)로 채점, `identity.auto_merge_threshold`(기본 0.8) 미만이면 **자동 결합하지 않고** `ReviewQueue(QUEUE_IDENTITY)`로 보낸다. 이름이 아예 겹치지 않으면 `PersonBlocklist` 확인 후 신규 생성.
@@ -60,7 +66,7 @@
 - [x] 2-10 I 리포트: 사추위 2페이지 PDF(부록 A·B, 워터마크) + POOL PDF/XLSX — §I
 - [x] 2-11 J 인증·공유: OIDC 인터페이스, 외부뷰어 POOL 범위 제한, 공유 링크 발급/회수/검증, 로그 — §J
 - [x] 2-12 G 수집: 더미/실제 모드, DART 클라이언트, 뉴스·웹, 인물 식별(동명이인 큐), 스냅샷, URL 점검, 보관기간 파기 — §G (DART/뉴스/웹 실제 API 호출부는 키 없어 미구현 상태 유지, 적재 파이프라인은 완성)
-- [ ] 2-13 관리자: 코드 추가·수정·이력, 설정값 수정·이력 (F-01-7)
+- [x] 2-13 관리자: 코드 추가·수정·이력, 설정값 수정·이력 (F-01-7)
 - [ ] 2-14 DoD 검증: 커버리지 ≥70%, §13 인수기준 1~9·15~17, 100명 조회 3초, README·CLAUDE.md 갱신
 
 ## 설계 결정 (재분석 없이 이대로 구현)
@@ -145,4 +151,5 @@
 - 2026-09-11: 1단계 마무리(렌더 테스트 수정, README), git 초기화, 이어하기 장치 구축
 - 2026-09-11: 2-1 ~ 2-10 완료·커밋(테스트 269개 통과). 2-11 코드 작성 후 사용자 요청으로 중단 — WIP 커밋, 테스트 미실행
 - 2026-09-11: 세션 재개. 개발 환경에 git·`.venv`가 없어 새로 구축(winget으로 git 설치, `python -m venv .venv` + requirements 설치). 우발적으로 삭제돼 있던 `.streamlit/config.toml`·`secrets.toml.example`(CORS/XSRF 설정 포함, 2-11 작업과 무관)을 `git checkout --`으로 복구. 2-11 WIP 전체 테스트 통과 확인(exit code 0) → 2-11 완료 처리
-- 2026-09-11: 2-12 G 수집 구현·검증·커밋(테스트 289개 통과). `core/ingest.py` 신설(적재 파이프라인). 다음은 2-13(관리자 화면)
+- 2026-09-11: 2-12 G 수집 구현·검증·커밋(테스트 289개 통과). `core/ingest.py` 신설(적재 파이프라인)
+- 2026-09-11: 2-13 관리자 화면 구현·검증·커밋(테스트 299개 통과). 다음은 2-14(DoD 검증, 2단계 마지막 단위)

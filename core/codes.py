@@ -424,3 +424,75 @@ def extra_of(category: str, code: str) -> dict:
         if c.code == code:
             return c.extra or {}
     return {}
+
+
+# ------------------------------------------------------------------ 관리자 CRUD (PRD F-01-7, 2-13)
+
+def all_categories() -> list[str]:
+    from data.session import session_scope
+
+    with session_scope() as s:
+        return sorted({row for row in s.execute(select(CodeMaster.category)).scalars()})
+
+
+def load_all(category: str) -> list[CodeMaster]:
+    """활성·비활성 모두 포함한다 (관리자 화면 전용, 목록 조회는 load_codes 를 쓴다)."""
+    from data.session import session_scope
+
+    stmt = select(CodeMaster).where(CodeMaster.category == category).order_by(CodeMaster.sort_order)
+    with session_scope() as s:
+        return list(s.execute(stmt).scalars())
+
+
+def create_code(
+    category: str, code: str, label: str, parent_code: str | None = None,
+    sort_order: int = 0, user_id: int | None = None,
+) -> None:
+    from core.audit import log_change
+    from data.session import session_scope
+
+    category = (category or "").strip()
+    code = (code or "").strip()
+    label = (label or "").strip()
+    if not category or not code or not label:
+        raise ValueError("카테고리·코드·표시명은 비울 수 없습니다.")
+    with session_scope() as s:
+        exists = s.execute(
+            select(CodeMaster.id).where(CodeMaster.category == category, CodeMaster.code == code)
+        ).first()
+        if exists:
+            raise ValueError(f"이미 존재하는 코드입니다: {category}/{code}")
+        s.add(CodeMaster(
+            category=category, code=code, label=label,
+            parent_code=(parent_code or "").strip() or None, sort_order=sort_order,
+        ))
+    log_change(user_id, "code", "create", f"{category}/{code}", label)
+
+
+def update_code(
+    code_id: int, *, label: str | None = None, sort_order: int | None = None,
+    is_active: bool | None = None, user_id: int | None = None,
+) -> None:
+    """드롭다운 선택지는 삭제하지 않고 비활성화만 한다 — 과거 데이터가 참조할 수 있어서다."""
+    from core.audit import log_change
+    from data.session import session_scope
+
+    with session_scope() as s:
+        row = s.get(CodeMaster, code_id)
+        if row is None:
+            raise LookupError("코드를 찾을 수 없습니다.")
+        before = f"{row.label} / 순서 {row.sort_order} / {'활성' if row.is_active else '비활성'}"
+        if label is not None:
+            label = label.strip()
+            if not label:
+                raise ValueError("표시명은 비울 수 없습니다.")
+            row.label = label
+        if sort_order is not None:
+            row.sort_order = sort_order
+        if is_active is not None:
+            row.is_active = is_active
+        path = f"{row.category}/{row.code}"
+        after = f"{row.label} / 순서 {row.sort_order} / {'활성' if row.is_active else '비활성'}"
+    if before == after:
+        return
+    log_change(user_id, "code", "update", path, f"{before} → {after}")

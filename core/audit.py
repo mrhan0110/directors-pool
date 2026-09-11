@@ -6,6 +6,8 @@ Streamlit 기본 로그로는 '누가 어떤 후보를 열람했는가'를 남�
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from core import constants as C
 from data.models import AccessLog, AuditLog
 from data.session import session_scope
@@ -67,3 +69,13 @@ def log_change(
 
 def log_denied(user_id: int | None, page: str, role: str | None) -> None:
     log_access(user_id, C.ACT_DENIED, page=page, detail=f"role={role}")
+
+
+def history_of(entity: str, prefix: str | None = None, limit: int = 200) -> list[AuditLog]:
+    """관리자 화면의 변경 이력 조회(코드·설정 등). 최신순."""
+    stmt = select(AuditLog).where(AuditLog.entity == entity)
+    if prefix:
+        stmt = stmt.where(AuditLog.entity_id.like(f"{prefix}%"))
+    stmt = stmt.order_by(AuditLog.occurred_at.desc()).limit(limit)
+    with session_scope() as s:
+        return list(s.execute(stmt).scalars())
