@@ -19,13 +19,15 @@ from core import pools, preferences, presets, scoring, search, settings, state
 from core.audit import log_access
 from core.auth import can_edit_pool
 from core.guard import confidential_notice, require
+from core.ui import charts as UI_CHARTS
+from core.ui.components import badge_html, page_header, result_count_banner
 from reports import exports
 from reports.builder import check_export
 from reports.xlsx import ExportMeta, build_table_xlsx
 
 user = require("search")
 
-st.title("후보 검색")
+page_header("후보 검색")
 confidential_notice()
 
 f = state.filters()
@@ -342,29 +344,13 @@ if state.get(state.K_LOGGED) != log_key:
 
 # ------------------------------------------------------------------ 결과 배너 (F-01-8, F-02-4)
 
+result_count_banner(result.total_matched, result.shown, result.limit_capped_by)
 if result.total_matched == 0:
-    st.warning("조건에 해당하는 후보가 없습니다.")
     suggestions = search.relaxation_suggestions(f)
     if suggestions:
         st.markdown("**조건 완화 제안** (F-01-6)")
         for label, count in suggestions:
             st.markdown(f"- `{label}` 조건을 제외하면 **{count}명**")
-elif result.truncated:
-    if result.limit_capped_by == "system":
-        st.warning(
-            f"전체 매칭 **{result.total_matched:,}명** 중 상위 **{result.shown:,}명** 표시 — "
-            f"조건에 해당하는 후보는 {result.total_matched:,}명이며 상한 {result.effective_limit:,}명까지만 "
-            "표시합니다. 조건을 좁혀 주세요."
-        )
-    elif result.limit_capped_by == "viewer":
-        st.warning(
-            f"전체 매칭 **{result.total_matched:,}명** 중 상위 **{result.shown:,}명** 표시 — "
-            f"외부뷰어 조회 상한 {result.effective_limit:,}명 적용"
-        )
-    else:
-        st.warning(f"전체 매칭 **{result.total_matched:,}명** 중 상위 **{result.shown:,}명** 표시")
-else:
-    st.success(f"전체 매칭 **{result.total_matched:,}명** 전부 표시")
 
 st.caption(scoring.DISCLAIMER)
 if f.get("sort", "FIT") == "FIT" and not (f.get("expertise_l1") or f.get("expertise_l2")):
@@ -425,7 +411,11 @@ if normal:
 
 if failed:
     st.divider()
-    st.subheader("결격 가능 후보 (별도 표시)")
+    st.markdown(
+        f'<h3 style="display:flex;align-items:center;gap:.5rem;">결격 가능 후보 (별도 표시) '
+        f'{badge_html(C.SCREEN_FAIL)}</h3>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         "스크리닝에서 결격 가능으로 판정된 후보입니다. 적합도와 무관하게 목록 하단에 분리 표시하며, "
         "최종 판단은 법무 검토로 확정합니다. (PRD F-06)"
@@ -435,6 +425,10 @@ if failed:
         on_select="rerun", selection_mode="multi-row", key="tbl_failed",
     )
     selected += _selected(failed, ev_failed)
+
+if result.rows:
+    with st.expander("성별·연령 분포 (다양성 확인용)"):
+        st.bar_chart(UI_CHARTS.gender_age_dataframe(result.rows))
 
 # 페이지네이션: 조회 인원 수(N)와 페이지 크기는 별개 (F-02-5)
 if result.page_count > 1:

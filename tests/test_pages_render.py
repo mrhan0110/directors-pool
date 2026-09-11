@@ -82,7 +82,7 @@ def test_search_page_reports_truncation():
     at.session_state["search.result_limit_code"] = "N10"
     at.run()
     assert not at.exception
-    banners = [w.value for w in at.warning] + [s.value for s in at.success]
+    banners = [w.value for w in at.warning] + [s.value for s in at.success] + [m.value for m in at.markdown]
     assert any("전체 매칭" in b for b in banners), f"절단 안내가 없음: {banners}"
 
 

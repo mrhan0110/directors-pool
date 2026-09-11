@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core import access, pools, sharing
+from core import access, pools, settings, sharing
 from core import constants as C
 from core.guard import confidential_notice, require
+from core.ui.components import page_header
 from data import repository
 
 user = require("dashboard")
 
-st.title("대시보드")
+page_header("대시보드")
 confidential_notice()
 
 # 외부뷰어는 공유받은 POOL 만 본다. 전체 후보 통계·명단은 보여주지 않는다 (F-09-12)
@@ -50,6 +51,16 @@ with left:
     if not rows:
         st.caption("해당 건이 없습니다.")
     else:
+        # 담당자가 놓치면 안 되는 정보이므로 가장 급한 건을 색으로 강조한다(디자인 원칙 3).
+        alert_months = settings.get_int(C.SET_TERM_ALERT_MONTHS, default=6)
+
+        def _urgency(remaining: int) -> str:
+            if remaining <= 0:
+                return "🔴 "
+            if remaining <= alert_months:
+                return "🟡 "
+            return ""
+
         st.dataframe(
             [
                 {
@@ -57,7 +68,7 @@ with left:
                     "회사": d.company_name,
                     "직위": d.role_type,
                     "임기 만료": d.term_end_date.isoformat() if d.term_end_date else "-",
-                    "잔여": f"{remaining}개월",
+                    "잔여": _urgency(remaining) + ("만료" if remaining <= 0 else f"{remaining}개월"),
                 }
                 for person, d, remaining in rows[:20]
             ],
@@ -74,11 +85,18 @@ with right:
         st.caption("생성된 POOL 이 없습니다.")
     else:
         for pool in pools:
-            st.markdown(f"**{pool.name}**")
-            st.caption(
-                f"{pool.target_position or '-'} · 등록 {counts.get(pool.pool_id, 0)}명"
-                f" / 목표 {pool.target_count or '-'}명"
-                f" · 기한 {pool.deadline.isoformat() if pool.deadline else '-'}"
+            st.markdown(
+                f"""
+                <div class="pool-card">
+                  <div style="font-weight:700;">{pool.name}</div>
+                  <div style="font-size:.85rem;color:var(--pool-muted);">
+                    {pool.target_position or '-'} · 등록 {counts.get(pool.pool_id, 0)}명
+                    / 목표 {pool.target_count or '-'}명
+                    · 기한 {pool.deadline.isoformat() if pool.deadline else '-'}
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
 st.divider()
