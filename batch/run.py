@@ -6,6 +6,9 @@
 사용법
     python -m batch.run analyze     # 전문분야 분류 → 스크리닝 → 적합도 (순서 중요)
     python -m batch.run classify | screen | score
+    python -m batch.run collect     # 수집(§G). DATA_MODE=dummy 가 기본값
+    python -m batch.run url-check   # 출처 URL 유효성 점검 (F-05-5)
+    python -m batch.run purge       # 보관기간 경과 후보 자동 파기 (§5.2)
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import time
 
 from dotenv import load_dotenv
 
-JOBS = ("analyze", "classify", "screen", "score")
+JOBS = ("analyze", "classify", "screen", "score", "collect", "url-check", "purge")
 
 
 def _log(action: str, detail: str) -> None:
@@ -48,6 +51,31 @@ def analyze() -> dict:
     return {"classified": classify(), "screening": screen(), "scored": score()}
 
 
+def collect() -> dict:
+    """수집(§G). 더미 모드(기본값)는 실제와 같은 적재 파이프라인을 통과하는 가짜 데이터를 만든다."""
+    from collectors.base import is_live_mode
+    from core import ingest
+
+    if is_live_mode():
+        raise NotImplementedError(
+            "실제 수집기(DART·뉴스·홈페이지)는 대상 목록 연동이 필요합니다. "
+            "collectors/dart.py·news.py·web.py 의 collect() 를 확장하세요."
+        )
+    return ingest.run_dummy_collection()
+
+
+def url_check() -> dict:
+    from core import ingest
+
+    return ingest.check_urls()
+
+
+def purge() -> dict:
+    from core import ingest
+
+    return {"purged": ingest.purge_expired()}
+
+
 def run(job: str) -> dict:
     from data.session import init_db
 
@@ -63,6 +91,12 @@ def run(job: str) -> dict:
             result = {"screening": screen()}
         elif job == "score":
             result = {"scored": score()}
+        elif job == "collect":
+            result = collect()
+        elif job == "url-check":
+            result = url_check()
+        elif job == "purge":
+            result = purge()
         else:
             raise ValueError(f"알 수 없는 작업입니다: {job}")
     except Exception as exc:

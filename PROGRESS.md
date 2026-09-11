@@ -18,8 +18,17 @@
 
 ## ▶ 다음 작업
 
-**2-12 G 수집부터 시작** (§G). `batch/run.py` CLI에 `collect` 서브커맨드 추가, `core/ingest.py`(적재 파이프라인 — 실제/더미 공용), `collectors/`에 DART OpenAPI 클라이언트·뉴스·웹 크롤러(더미 모드 우선: 실제와 같은 파이프라인을 통과하는 가짜 CollectedFact 생성), 인물 식별(이름+생년+소속이력 겹침 점수, `identity.auto_merge_threshold` 미만이면 ReviewQueue로 — 자동 결합 금지), 출처 충돌 시 상위 tier 채택 + `FieldConflict` 기록(단 `manually_edited=True` 필드는 덮어쓰지 않고 ReviewQueue), 스냅샷 저장, URL 점검(`url-check` 서브커맨드), 보관기간 경과 시 파기(`purge` 서브커맨드). 소스 화이트리스트(§불변규칙 7 — 익명 커뮤니티·SNS·개인 블로그·위키 차단)를 수집 단계에서 강제할 것.
-- 완료 후: 테스트 통과 → 체크 → `2-12 G 수집` 커밋 → 2-13(관리자 화면)으로.
+**2-13 관리자 화면부터 시작** (F-01-7). `pages/`에 관리자 전용 화면 추가: CodeMaster 코드 추가·수정·비활성화(+ 변경 이력), AppSetting 값 수정(+ 변경 이력, `core/settings.set_value`는 이미 있음 — 화면만 없음). 관리자 화면 상단에서도 `guard.require(role=ROLE_ADMIN)` 재검증할 것(불변규칙 5). 코드/설정 변경은 AuditLog에 남겨야 한다(기존 `log_change` 재사용).
+- 완료 후: 테스트 통과 → 체크 → `2-13 관리자 화면` 커밋 → 2-14(DoD 검증)로.
+
+**(완료) 2-12 G 수집.** `core/ingest.py` 신설 — 더미/실제 공용 적재 파이프라인:
+- 인물 식별 `resolve_person`/`get_or_create_person`: 이름 완전일치 후보를 생년월(±0.5)+소속이력 겹침(±0.5)+성별(+0.1)로 채점, `identity.auto_merge_threshold`(기본 0.8) 미만이면 **자동 결합하지 않고** `ReviewQueue(QUEUE_IDENTITY)`로 보낸다. 이름이 아예 겹치지 않으면 `PersonBlocklist` 확인 후 신규 생성.
+- 사실 적재 `ingest_fact`(position/directorship/reputation/achievement 공용, 자연키는 `MATCH_KEYS`): 기존 행이 `manually_edited=True`면 `core.review.EDITABLE` 교집합 필드만 `ReviewQueue(QUEUE_CONFLICT)`로 큐잉(payload 형식을 `core.review.resolve_alert`가 그대로 처리하도록 맞춤 — 검수 화면에서 그대로 승인/거부 가능). 아니면 상위 신뢰등급(A>B>C, 동급이면 최신 발행일)을 채택하고 하위 값은 `FieldConflict`로 병기(F-05-3). `ingest_industry`는 PersonIndustry 존재만 사실이므로 최초 1건만 적재.
+- `purge_expired`(retention_until 경과 자동 파기, 부속 테이블도 함께 정리 — cascade 안 걸린 PersonIndustry/PersonScore/ConsiderationCheck/ReviewLog/ExpertiseHistory/PoolMember 수동 삭제), `delete_person_request`(즉시 파기 + `PersonBlocklist` 등록으로 재수집 차단, §5.2).
+- `check_urls(fetcher=None)`(F-05-5, 기본은 `urllib` HEAD 요청이지만 테스트는 fetcher를 주입해 네트워크 없이 검증), `save_snapshot`(F-05-6, `storage/snapshots/<subdir>/<file>`에 저장하고 상대경로 반환 — `Source.snapshot_path`에 넣는다).
+- `run_dummy_collection()`: 위 파이프라인 전체(신규 생성·동일인 매칭·동명이인 큐잉·차단·등급충돌·검수보호)를 실제와 같은 경로로 통과시키는 시나리오. `batch/run.py collect`(DATA_MODE=dummy 기본)가 이를 호출. `batch/run.py`에 `url-check`·`purge` 서브커맨드도 추가.
+- 테스트: `tests/test_ingest.py` 14건(식별·충돌·검수보호·파기·차단·URL점검·스냅샷·배치 CLI 로그).
+- **의도적으로 미룬 부분**: `collectors/dart.py`·`news.py`·`web.py`의 실제 라이브 API 호출부는 여전히 `NotImplementedError`(1단계 상태 그대로)다. 실제 DART/뉴스 API 키가 없어 이 세션에서 검증할 수 없고, 잘못 구현하면 조용히 깨진 채로 남을 위험이 커서 보수적으로 미뤘다. 실제 구현 시 파싱 결과를 `core.ingest.ingest_fact`/`ingest_industry`/`get_or_create_person`에 그대로 태우면 된다(파이프라인은 이미 완성). API 키 발급 전까지는 `batch.run collect`가 더미 경로만 탄다(§14 미결과 무관, 키 문제).
 
 **(참고) 2-10 커밋 → 2-11 J 인증·공유** (§J).
 - 2-10(검증 완료, 커밋 전이면 먼저 커밋): reports/pdf.py reports/builder.py pages/6_리포트.py core/state.py tests/test_pdf.py tests/test_pages_render.py PROGRESS.md. 샘플 PDF 육안 확인 완료(한글·워터마크·각주·2면). POOL PDF는 리포트 화면 POOL 탭에서 제공(POOL 화면 버튼 없음).
@@ -50,7 +59,7 @@
 - [x] 2-9 H POOL 관리(CRUD·상태 전이·사유·타임라인) + 검수(3분할·승인/수정/삭제·ReviewLog·충돌 알림) — §H
 - [x] 2-10 I 리포트: 사추위 2페이지 PDF(부록 A·B, 워터마크) + POOL PDF/XLSX — §I
 - [x] 2-11 J 인증·공유: OIDC 인터페이스, 외부뷰어 POOL 범위 제한, 공유 링크 발급/회수/검증, 로그 — §J
-- [ ] 2-12 G 수집: 더미/실제 모드, DART 클라이언트, 뉴스·웹, 인물 식별(동명이인 큐), 스냅샷, URL 점검, 보관기간 파기 — §G
+- [x] 2-12 G 수집: 더미/실제 모드, DART 클라이언트, 뉴스·웹, 인물 식별(동명이인 큐), 스냅샷, URL 점검, 보관기간 파기 — §G (DART/뉴스/웹 실제 API 호출부는 키 없어 미구현 상태 유지, 적재 파이프라인은 완성)
 - [ ] 2-13 관리자: 코드 추가·수정·이력, 설정값 수정·이력 (F-01-7)
 - [ ] 2-14 DoD 검증: 커버리지 ≥70%, §13 인수기준 1~9·15~17, 100명 조회 3초, README·CLAUDE.md 갱신
 
@@ -135,4 +144,5 @@
 
 - 2026-09-11: 1단계 마무리(렌더 테스트 수정, README), git 초기화, 이어하기 장치 구축
 - 2026-09-11: 2-1 ~ 2-10 완료·커밋(테스트 269개 통과). 2-11 코드 작성 후 사용자 요청으로 중단 — WIP 커밋, 테스트 미실행
-- 2026-09-11: 세션 재개. 개발 환경에 git·`.venv`가 없어 새로 구축(winget으로 git 설치, `python -m venv .venv` + requirements 설치). 우발적으로 삭제돼 있던 `.streamlit/config.toml`·`secrets.toml.example`(CORS/XSRF 설정 포함, 2-11 작업과 무관)을 `git checkout --`으로 복구. 2-11 WIP 전체 테스트 통과 확인(exit code 0) → 2-11 완료 처리, 2-12(G 수집)로 진행
+- 2026-09-11: 세션 재개. 개발 환경에 git·`.venv`가 없어 새로 구축(winget으로 git 설치, `python -m venv .venv` + requirements 설치). 우발적으로 삭제돼 있던 `.streamlit/config.toml`·`secrets.toml.example`(CORS/XSRF 설정 포함, 2-11 작업과 무관)을 `git checkout --`으로 복구. 2-11 WIP 전체 테스트 통과 확인(exit code 0) → 2-11 완료 처리
+- 2026-09-11: 2-12 G 수집 구현·검증·커밋(테스트 289개 통과). `core/ingest.py` 신설(적재 파이프라인). 다음은 2-13(관리자 화면)
