@@ -18,9 +18,10 @@
 
 ## ▶ 다음 작업
 
-**2-9 검증·커밋 → 2-10**. 작성 완료·**미검증**: `core/review.py`, `tests/test_review.py`, `pages/4_POOL_관리.py`, `pages/5_검수.py`. 전체 테스트 통과 시 2-9 커밋(위 4개 + PROGRESS.md).
-- 2-10 작성 완료·미검증: `reports/pdf.py`(부록 A·B, 워터마크, 폰트 폴백 PDF_FONT_PATH→malgun→CID), `reports/builder.py`(build_candidate_pdf/build_pool_pdf, 내부에서 게이트 재검사). 남은 것: `tests/test_pdf.py`, `pages/6_리포트.py`(대상 선택·종합의견/법무검토 입력·미리보기 요약·다운로드+AccessLog), POOL 화면에 POOL PDF 버튼.
-- **외부뷰어 후보 범위 제한은 2-11에서 상세·비교·POOL·리포트 화면에 추가**(현재는 전 후보 조회 가능 — 반드시 막을 것).
+**2-10 커밋 → 2-11 J 인증·공유** (§J).
+- 2-10(검증 완료, 커밋 전이면 먼저 커밋): reports/pdf.py reports/builder.py pages/6_리포트.py core/state.py tests/test_pdf.py tests/test_pages_render.py PROGRESS.md. 샘플 PDF 육안 확인 완료(한글·워터마크·각주·2면). POOL PDF는 리포트 화면 POOL 탭에서 제공(POOL 화면 버튼 없음).
+- 2-11 작성됨: `core/sharing.py`(issue_link/revoke/verify_token/active_links_for/list_links/status_of/access_history, 토큰 sha256만 저장, 수신자 활성 계정 필수, 만료 상한 설정), `core/access.py`(allowed_pool_ids/allowed_person_ids/can_view_person/filter_person_options — 뷰어만 제한, 매 요청 DB 재계산), `core/auth.refresh_user`, `tests/helpers.py`(user_for(role)), `tests/test_sharing.py`.
+- 2-11 남은 것: ① `guard.require`에 `refresh_user`(비활성·만료·역할변경 즉시 반영) + `confidential_notice`에 열람자·일시 스탬프 ② `app.py`: refresh + `?share=` 토큰(로그인 전엔 보관만, 로그인 후 verify_token → 실패 사유 표시, 쿼리파라미터 제거, 성공 시 POOL 화면) ③ 대시보드: 뷰어는 공유받은 POOL만 ④ 상세·POOL 화면에 access 필터(범위 밖 후보·POOL 차단) ⑤ 공유 관리 화면(S-09: 발급 폼·링크 1회 표시·상태(유효/만료 임박/만료/회수)·회수·접속 이력) ⑥ 시드에 viewer@example.com → POOL1 공유 1건 ⑦ **테스트의 사용자 id를 역할별 실제 계정으로 교체**(`tests/helpers.user_for`) — refresh_user 도입 시 user_id=1(담당자)에 관리자 역할을 넣던 test_pages_render/test_pages_guard가 깨짐 ⑧ 뷰어 화면 테스트(범위 밖 후보 차단, 회수 즉시 차단).
 - 2-8 완료 메모: 상세 화면 헬퍼 = `SRC.FreshnessPolicy/is_outdated/conflicts_of/conflict_index`, `CS.evaluate/get_checks/save_check`, `REP.signals/status_parts`, `career.remaining_label`. 권한 = `can_edit_pool`(담당·국장·관리), `can_review`(뷰어 제외), `can_override_screening`(법무·관리).
 
 **(완료) 2-7. B 결과 목록 액션 + XLSX** (§B). 2-7 커밋 대상: core/search.py core/auth.py core/state.py pages/1_후보_검색.py core/pools.py reports/xlsx.py reports/exports.py tests/test_pools.py tests/test_exports.py tests/test_search_features.py tests/test_pages_render.py PROGRESS.md. 이미 작성됨(미커밋 가능): `core/pools.py`(POOL CRUD·상태전이·코멘트·타임라인·동시수정 거부), `reports/xlsx.py`(build_table_xlsx, 워터마크), `reports/exports.py`(candidate_rows: 순위·출처 URL), 테스트 `tests/test_pools.py`, `tests/test_exports.py`. 남은 것: `core/search.py`에 `search_ranked()`(id, 적합도) 추가 → 검색 화면 결과표를 `st.dataframe(on_select="rerun", selection_mode="multi-row")`로 바꾸고 선택 후보 [상세] [비교함] [POOL 추가(기존/신규: 명칭·목적·대상 직위·메모)], XLSX 다운로드(상위 N명 전체, `check_export` 게이트 — 미검수 포함 시 비활성+사유, 다운로드 시 AccessLog export).
@@ -43,8 +44,8 @@
 - [x] 2-6 A 검색 core+화면: 건수 배지, 칩 해제, 프리셋, 최근 인원수 사용자별 저장, 페이지네이션 — §A
 - [x] 2-7 B 결과 목록: 전체 컬럼, 행 선택→상세/POOL 추가/비교, XLSX 내보내기 — §B
 - [x] 2-8 C 상세: 전 섹션, 출처 충돌(대체 정보), 구 정보 배지, 평판 정량, 18개 고려사항 체크리스트 — §C
-- [ ] 2-9 H POOL 관리(CRUD·상태 전이·사유·타임라인) + 검수(3분할·승인/수정/삭제·ReviewLog·충돌 알림) — §H
-- [ ] 2-10 I 리포트: 사추위 2페이지 PDF(부록 A·B, 워터마크) + POOL PDF/XLSX — §I
+- [x] 2-9 H POOL 관리(CRUD·상태 전이·사유·타임라인) + 검수(3분할·승인/수정/삭제·ReviewLog·충돌 알림) — §H
+- [x] 2-10 I 리포트: 사추위 2페이지 PDF(부록 A·B, 워터마크) + POOL PDF/XLSX — §I
 - [ ] 2-11 J 인증·공유: OIDC 인터페이스, 외부뷰어 POOL 범위 제한, 공유 링크 발급/회수/검증, 로그 — §J
 - [ ] 2-12 G 수집: 더미/실제 모드, DART 클라이언트, 뉴스·웹, 인물 식별(동명이인 큐), 스냅샷, URL 점검, 보관기간 파기 — §G
 - [ ] 2-13 관리자: 코드 추가·수정·이력, 설정값 수정·이력 (F-01-7)

@@ -22,6 +22,8 @@ K_SIGNATURE = "search.signature"      # 조건이 바뀌면 1페이지로 돌아
 K_LOGGED = "search.logged_signature"  # 같은 검색을 재실행마다 중복 로깅하지 않기 위함
 K_EXPORT = "export.xlsx"              # 생성된 내보내기 파일(개인정보 포함 — 로그아웃 시 삭제)
 K_EXPORT_SIG = "export.signature"
+K_REPORT = "report.pdf"               # 생성된 PDF(개인정보 포함 — 로그아웃 시 삭제)
+K_REPORT_SIG = "report.signature"
 K_SELECTED_PERSON = "nav.selected_person_id"
 K_COMPARE_BASKET = "nav.compare_basket"
 K_TOAST = "ui.toast"
@@ -106,6 +108,8 @@ def clear_user_scoped() -> None:
         K_LOGGED,
         K_EXPORT,
         K_EXPORT_SIG,
+        K_REPORT,
+        K_REPORT_SIG,
         K_SELECTED_PERSON,
         K_COMPARE_BASKET,
     ):

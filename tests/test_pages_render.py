@@ -100,8 +100,31 @@ def test_report_page_blocks_unreviewed_export():
     """검수 미완료 프로파일은 출력이 차단된다 (PRD F-08-1)."""
     at = _run("pages/6_리포트.py")
     assert not at.exception
-    # 시드 데이터의 대부분은 미검수이므로 차단 메시지 또는 허용 메시지 중 하나가 떠야 한다
     messages = [e.value for e in at.error] + [s.value for s in at.success]
     assert messages, "출력 가능 여부가 표시되지 않음"
-    # 다운로드 버튼은 1단계에서 항상 비활성
-    assert all(b.disabled for b in at.button if "PDF" in b.label)
+    blocked = any("F-08-1" in e.value for e in at.error)
+    if blocked:
+        # 차단 시 개인 PDF 생성 버튼은 비활성이어야 한다
+        buttons = [b for b in at.button if "사추위 보고용 PDF" in b.label]
+        assert buttons and all(b.disabled for b in buttons)
+
+
+def test_report_page_blocks_unreviewed_person():
+    """미검수 후보를 고르면 PDF 생성 버튼이 비활성이다 (인수 기준 #8)."""
+    from sqlalchemy import select
+
+    from data.models import Person
+    from data.session import session_scope
+
+    with session_scope() as s:
+        pid = s.execute(select(Person.person_id).where(Person.profile_status == C.PROFILE_UNREVIEWED)).scalars().first()
+    at = AppTest.from_file(str(PROJECT_ROOT / "pages/6_리포트.py"), default_timeout=60)
+    at.session_state[K_USER] = CurrentUser(user_id=1, email="staff@example.com", display_name="가상 담당자",
+                                           role=C.ROLE_STAFF)
+    at.session_state[K_LAST_ACTIVE] = datetime.now(timezone.utc)
+    at.run()
+    at.selectbox(key="report_person").set_value(pid).run()
+    assert not at.exception
+    assert any("F-08-1" in e.value for e in at.error)
+    buttons = [b for b in at.button if "사추위 보고용 PDF" in b.label]
+    assert buttons and all(b.disabled for b in buttons)
