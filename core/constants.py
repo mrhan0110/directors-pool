@@ -164,6 +164,10 @@ SET_WEB_FRESH_DAYS = "source.web_fresh_days"
 # 인물 식별 — 이 점수 미만이면 자동 결합하지 않고 수기 확인 큐로 (PRD §11)
 SET_IDENTITY_MERGE_THRESHOLD = "identity.auto_merge_threshold"
 
+# 실제 수집 대상 — 초기 모집단 범위는 PRD §14-1 미결 사항이라 코드에 박지 않고 설정값으로 둔다.
+# 형식: "corp_code:회사명" 쌍을 콤마로 구분(예: "00126380:가상전자,00164742:가상화학")
+SET_DART_TARGET_COMPANIES = "collect.dart_target_companies"
+
 # ---------------------------------------------------------------- AccessLog 액션 (PRD F-09-22)
 ACT_LOGIN = "login"
 ACT_LOGOUT = "logout"

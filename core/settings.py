@@ -220,6 +220,13 @@ DEFAULTS: list[dict] = [
         "value_type": "float",
         "description": "동명이인 자동 결합 최소 신뢰도(0~1). 미만이면 수기 확인 큐로 (PRD §11)",
     },
+    {
+        "key": C.SET_DART_TARGET_COMPANIES,
+        "value": "",
+        "value_type": "list",
+        "description": "DART 실제 수집 대상 'corp_code:회사명' 쌍(콤마 구분). "
+                       "초기 모집단 범위는 결정 대기(PRD §14-1) — 결정 후 이 값을 채운다",
+    },
 ]
 
 

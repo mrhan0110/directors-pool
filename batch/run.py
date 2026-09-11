@@ -52,16 +52,26 @@ def analyze() -> dict:
 
 
 def collect() -> dict:
-    """수집(§G). 더미 모드(기본값)는 실제와 같은 적재 파이프라인을 통과하는 가짜 데이터를 만든다."""
+    """수집(§G). 더미 모드(기본값)는 실제와 같은 적재 파이프라인을 통과하는 가짜 데이터를 만든다.
+
+    실제 모드(DATA_MODE=live)는 현재 DART 만 연동되어 있다(뉴스·홈페이지는 소스 계약·크롤링
+    대상이 정해지지 않아 미구현 — PRD §14-2 결정 대기). 대상 회사는 관리자 화면의
+    'collect.dart_target_companies' 설정값(corp_code:회사명 쌍)에서 읽는다.
+    사업연도는 DART_BSNS_YEAR 환경변수(기본값: 작년 — 정기보고서는 익년에 공시된다)로 지정한다.
+    """
+    import os
+    from datetime import date
+
     from collectors.base import is_live_mode
     from core import ingest
 
-    if is_live_mode():
-        raise NotImplementedError(
-            "실제 수집기(DART·뉴스·홈페이지)는 대상 목록 연동이 필요합니다. "
-            "collectors/dart.py·news.py·web.py 의 collect() 를 확장하세요."
-        )
-    return ingest.run_dummy_collection()
+    if not is_live_mode():
+        return ingest.run_dummy_collection()
+
+    from collectors.pipeline import collect_configured_dart_targets
+
+    bsns_year = os.getenv("DART_BSNS_YEAR", str(date.today().year - 1))
+    return {"dart": collect_configured_dart_targets(bsns_year)}
 
 
 def url_check() -> dict:
