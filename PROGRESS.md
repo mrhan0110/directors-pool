@@ -18,8 +18,8 @@
 
 ## ▶ 다음 작업
 
-**2-3. D 전문분야 자동 분류** (§D). 파일: `core/expertise_rules.py`(키워드 사전+직업코드 힌트), `core/expertise.py`(Evidence→classify_evidence→store, confirm/set_primary/remove + ExpertiseHistory, displayable 가드, LLM 검증 가드), `tests/test_expertise.py`.
-- 사용자가 삭제한 코드는 ExpertiseHistory 마지막 action=`삭제`로 판정해 재분류 시 다시 넣지 않음. confirmed/manually_edited 행은 재분류가 건드리지 않음.
+**2-4. F 적합도 점수** (§F). `core/scoring.py`: 순수함수 `base_components(data, ctx)`(스킬갭·경력·가용성·리스크) → PersonScore 저장(`store/score_all`), 검색용 SQL 식 `expertise_match_expr(codes, weight)`, FIT 정렬을 `core/search.py _apply_sort`에 연결, SearchRow에 score·근거요약 추가. 테스트 `tests/test_scoring.py`.
+- 2-3 메모: 전문분야 API = `EXP.classify_evidence/evidence_from_detail/classify/store/classify_all`, `confirm/set_primary/remove/history_of`, 출력 가드 `EXP.displayable(expertises, sources)` — **상세·비교·리포트 화면은 반드시 이 가드를 거칠 것**. 현 seed의 duties가 "(더미) 주요 담당 업무"라 분류 근거가 빈약 → 2-5에서 키워드 포함 담당업무 문구로 교체.
 - 2-2 메모: 스크리닝 API = `OrgContext.load()`, `evaluate_input/evaluate/evaluate_and_store/evaluate_all`, `set_override`, `effective`, `worst`. 현 더미데이터상 R-01·R-02·R-05 전원 pass → **2-5 시드에 자사·계열사·대주주·장기재직·`형사 판결` 케이스 추가 필요**.
 
 ## 2단계 작업 단위 체크리스트
@@ -28,7 +28,7 @@
 
 - [x] 2-1 모델·설정 확장 (신규 테이블/컬럼, AppSetting 키, SCREEN_INFO) — §M
 - [x] 2-2 E 스크리닝 룰엔진 R-01~R-08 (`core/screening.py`) — §E
-- [ ] 2-3 D 전문분야 자동 분류 (`core/expertise_rules.py`, `core/expertise.py`) — §D
+- [x] 2-3 D 전문분야 자동 분류 (`core/expertise_rules.py`, `core/expertise.py`) — §D
 - [ ] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F
 - [ ] 2-5 시드 재작성: 엔진으로 스크리닝·분류·점수 산출, 자사/충돌/수동검수 케이스 포함 + `batch/run.py`
 - [ ] 2-6 A 검색 core+화면: 건수 배지, 칩 해제, 프리셋, 최근 인원수 사용자별 저장, 페이지네이션 — §A
