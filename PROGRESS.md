@@ -18,13 +18,14 @@
 
 ## ▶ 다음 작업
 
-**2-1. 모델·설정 확장** (아래 설계 결정 §M 참고)
+**2-2. E 스크리닝 룰엔진** (§E). `core/screening.py`의 `evaluate()`를 룰별 함수로 구현, `evaluate_and_store(person_id)`로 저장(override 보존), `tests/test_screening.py` 작성.
+- 참고: 2-1에서 settings에 `get_str/get_float/get_list/validate` 추가됨. 자사 판정은 `org_name`이 자사명/계열사명과 **일치 또는 포함**으로 비교.
 
 ## 2단계 작업 단위 체크리스트
 
 각 단위 = 구현 + 테스트 + 커밋. 순서대로 진행.
 
-- [ ] 2-1 모델·설정 확장 (신규 테이블/컬럼, AppSetting 키, SCREEN_INFO) — §M
+- [x] 2-1 모델·설정 확장 (신규 테이블/컬럼, AppSetting 키, SCREEN_INFO) — §M
 - [ ] 2-2 E 스크리닝 룰엔진 R-01~R-08 (`core/screening.py`) — §E
 - [ ] 2-3 D 전문분야 자동 분류 (`core/expertise_rules.py`, `core/expertise.py`) — §D
 - [ ] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F

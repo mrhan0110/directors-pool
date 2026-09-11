@@ -27,10 +27,14 @@ class RuleVerdict:
 
 
 def worst(results: list[str]) -> str:
-    """여러 룰 판정 중 가장 나쁜 것을 후보의 대표 상태로 본다."""
-    if not results:
+    """여러 룰 판정 중 가장 나쁜 것을 후보의 대표 상태로 본다.
+
+    info(참고)는 대표 상태에 영향을 주지 않는다.
+    """
+    judged = [r for r in results if r != C.SCREEN_INFO]
+    if not judged:
         return C.SCREEN_PASS
-    return max(results, key=lambda r: C.SCREEN_ORDER.get(r, 0))
+    return max(judged, key=lambda r: C.SCREEN_ORDER.get(r, 0))
 
 
 def status_of(person_id: int) -> str:

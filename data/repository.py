@@ -135,6 +135,8 @@ def screening_distribution() -> dict[str, int]:
         ).all()
     worst: dict[int, str] = {}
     for pid, result in rows:
+        if result == C.SCREEN_INFO:  # 참고 정보는 대표 상태에 반영하지 않는다
+            continue
         prev = worst.get(pid)
         if prev is None or C.SCREEN_ORDER[result] > C.SCREEN_ORDER[prev]:
             worst[pid] = result

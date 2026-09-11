@@ -31,16 +31,19 @@ PROFILE_REVIEWED = "검수완료"
 SCREEN_PASS = "pass"
 SCREEN_WARN = "warn"
 SCREEN_FAIL = "fail"
+# 참고 정보(R-07 감사위원 요건, R-08 다양성). 후보의 대표 상태를 나쁘게 만들지 않는다.
+SCREEN_INFO = "info"
 
 SCREEN_BADGE = {
     SCREEN_PASS: "🟢 이슈 없음",
     SCREEN_WARN: "🟡 확인 필요",
     SCREEN_FAIL: "🔴 결격 가능",
+    SCREEN_INFO: "ℹ️ 참고",
 }
-# 목록 정렬 시 결격 후보를 하단으로 분리하기 위한 순위 (PRD F-06)
-SCREEN_ORDER = {SCREEN_PASS: 0, SCREEN_WARN: 1, SCREEN_FAIL: 2}
+# 목록 정렬 시 결격 후보를 하단으로 분리하기 위한 순위 (PRD F-06). info 는 pass 보다 낮다.
+SCREEN_ORDER = {SCREEN_INFO: -1, SCREEN_PASS: 0, SCREEN_WARN: 1, SCREEN_FAIL: 2}
 
-# 스크리닝 룰 정의 (PRD §5.1). 실제 판정 로직은 2단계에서 core/screening.py 에 구현한다.
+# 스크리닝 룰 정의 (PRD §5.1). 판정 로직은 core/screening.py.
 SCREENING_RULES = {
     "R-01": "회사·계열회사의 상근 임직원 또는 냉각기간 내 재직 이력",
     "R-02": "최대주주·주요주주 본인 및 특수관계인 여부",
@@ -128,7 +131,33 @@ SET_AFFILIATE_TENURE_LIMIT_YEARS = "rule.affiliate_tenure_limit_years"
 SET_COOLING_OFF_YEARS = "rule.cooling_off_years"
 SET_SESSION_IDLE_MINUTES = "auth.session_idle_minutes"
 SET_SHARE_LINK_DEFAULT_DAYS = "share.default_expiry_days"
+SET_SHARE_LINK_MAX_DAYS = "share.max_expiry_days"
 SET_RETENTION_YEARS = "privacy.retention_years"
+
+# 자사 정보 — 스크리닝 룰의 판정 기준 (PRD §5.1). 전부 관리자 화면에서 수정한다.
+SET_OWN_COMPANY = "org.own_company"
+SET_AFFILIATES = "org.affiliates"
+SET_MAJOR_SHAREHOLDERS = "org.major_shareholders"
+SET_CONFLICT_ORGS = "org.conflict_orgs"
+SET_TOTAL_ASSETS_KRW = "org.total_assets_krw"
+SET_BOARD_FEMALE_COUNT = "org.board_female_count"
+SET_BOARD_SKILL_GAPS = "org.board_skill_gaps"
+SET_GENDER_RULE_ASSET_THRESHOLD = "rule.gender_rule_asset_threshold_krw"
+SET_ATTENDANCE_WARN_RATE = "rule.attendance_warn_rate"
+
+# 적합도 가중치 (PRD F-06)
+SET_W_EXPERTISE = "score.weight.expertise_match"
+SET_W_SKILL_GAP = "score.weight.skill_gap"
+SET_W_CAREER = "score.weight.career_level"
+SET_W_AVAILABILITY = "score.weight.availability"
+SET_W_RISK = "score.weight.risk_penalty"
+
+# 출처 최신성 (PRD F-05-4)
+SET_NEWS_FRESH_YEARS = "source.news_fresh_years"
+SET_WEB_FRESH_DAYS = "source.web_fresh_days"
+
+# 인물 식별 — 이 점수 미만이면 자동 결합하지 않고 수기 확인 큐로 (PRD §11)
+SET_IDENTITY_MERGE_THRESHOLD = "identity.auto_merge_threshold"
 
 # ---------------------------------------------------------------- AccessLog 액션 (PRD F-09-22)
 ACT_LOGIN = "login"
@@ -138,4 +167,14 @@ ACT_SEARCH = "search"
 ACT_EXPORT = "export"
 ACT_SHARE_ISSUE = "share_issue"
 ACT_SHARE_REVOKE = "share_revoke"
+ACT_SHARE_ACCESS = "share_access"
 ACT_DENIED = "access_denied"
+
+# ---------------------------------------------------------------- 검수 (PRD F-08)
+REVIEW_APPROVE = "승인"
+REVIEW_EDIT = "수정"
+REVIEW_DELETE = "삭제"
+
+# ReviewQueue 유형
+QUEUE_IDENTITY = "동명이인 확인"
+QUEUE_CONFLICT = "충돌 알림"  # 수동 수정 항목을 자동 갱신이 바꾸려 할 때 (F-08-4)

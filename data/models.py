@@ -23,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -154,6 +155,8 @@ class Position(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # 10년 초과 이력이라도 판단에 결정적인 경우 하이라이트로 노출 (PRD F-03 (3))
     is_highlight: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 검수자가 수정한 항목은 자동 갱신이 덮어쓰지 않는다 (PRD F-08-4)
+    manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
 
     person: Mapped[Person] = relationship(back_populates="positions")
@@ -202,6 +205,7 @@ class Directorship(Base):
     board_attendance_rate: Mapped[float | None] = mapped_column(Float)
     compensation_disclosed: Mapped[int | None] = mapped_column(Integer)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
 
     person: Mapped[Person] = relationship(back_populates="directorships")
@@ -244,6 +248,9 @@ class Expertise(Base):
     evidence_snippet: Mapped[str] = mapped_column(Text, nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     confirmed_by_user_yn: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 분류 가중 점수 (PRD §6.4 분류 로직 3). 대표/보조 판정의 근거
+    score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
     extra_source_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
@@ -269,6 +276,7 @@ class Reputation(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str | None] = mapped_column(String(20))  # 진행중 / 종결 / 무혐의 / 확정
     verified_yn: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
 
     person: Mapped[Person] = relationship(back_populates="reputations")
@@ -286,6 +294,7 @@ class Achievement(Base):
     period: Mapped[str | None] = mapped_column(String(50))
     description: Mapped[str] = mapped_column(Text, nullable=False)
     quantitative_metric: Mapped[str | None] = mapped_column(String(300))
+    manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
 
     person: Mapped[Person] = relationship(back_populates="achievements")
@@ -480,6 +489,136 @@ class AppSetting(Base):
         DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+
+
+class PersonScore(Base):
+    """적합도 기본 점수 (PRD F-06).
+
+    검색 조건과 무관한 부분(스킬갭·경력·가용성·리스크)만 저장한다.
+    전문분야 매칭도는 검색 조건에 따라 달라지므로 검색 시 SQL 로 더한다.
+    """
+
+    __tablename__ = "person_score"
+
+    person_id: Mapped[int] = mapped_column(ForeignKey("person.person_id"), primary_key=True)
+    base_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    breakdown: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class SearchPreset(Base):
+    """검색 프리셋 (PRD F-01-5). 조회 인원 수도 함께 저장한다 (F-01-8)."""
+
+    __tablename__ = "search_preset"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.user_id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    filters: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    limit_code: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_preset_user_name"),)
+
+
+class UserPreference(Base):
+    """사용자별 최근 선택값 (PRD F-01-8 '사용자별 최근 선택값 기억')."""
+
+    __tablename__ = "user_preference"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.user_id"), primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+
+
+class ConsiderationCheck(Base):
+    """선정 고려사항 18개 항목의 수기 확인·코멘트·첨부 (PRD F-03 (7), F-03-5)."""
+
+    __tablename__ = "consideration_check"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("person.person_id"), nullable=False)
+    item_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str | None] = mapped_column(String(20))  # 확인 필요 / 이상 없음 / 우려 있음
+    comment: Mapped[str | None] = mapped_column(Text)
+    attachment_name: Mapped[str | None] = mapped_column(String(300))
+    attachment: Mapped[bytes | None] = mapped_column(LargeBinary)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("person_id", "item_no", name="uq_consideration_item"),)
+
+
+class FieldConflict(Base):
+    """출처 간 상충 정보 (PRD F-05-3).
+
+    상위 등급 값을 채택하고, 하위 등급 값을 '대체 정보'로 병기해 충돌 사실을 숨기지 않는다.
+    대체 정보도 출처가 있어야 한다 (불변규칙 1).
+    """
+
+    __tablename__ = "field_conflict"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("person.person_id"), nullable=False)
+    entity: Mapped[str] = mapped_column(String(50), nullable=False)  # position / directorship / person
+    entity_id: Mapped[int | None] = mapped_column(Integer)
+    field: Mapped[str] = mapped_column(String(100), nullable=False)
+    adopted_value: Mapped[str | None] = mapped_column(Text)
+    adopted_source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
+    alt_value: Mapped[str | None] = mapped_column(Text)
+    alt_source_id: Mapped[int] = mapped_column(ForeignKey("source.source_id"), nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_conflict_person", "person_id"),)
+
+
+class ExpertiseHistory(Base):
+    """전문분야 수정·확정 이력 (PRD F-04-4, 모델 개선 피드백 루프)."""
+
+    __tablename__ = "expertise_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("person.person_id"), nullable=False)
+    taxonomy_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)  # 확정 / 대표지정 / 보조지정 / 삭제
+    before_value: Mapped[str | None] = mapped_column(Text)
+    after_value: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class PoolEvent(Base):
+    """POOL 변경 이력 및 담당자 코멘트 타임라인 (PRD F-07)."""
+
+    __tablename__ = "pool_event"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pool_id: Mapped[int] = mapped_column(ForeignKey("pool.pool_id"), nullable=False)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("person.person_id"))
+    event: Mapped[str] = mapped_column(String(30), nullable=False)  # 추가 / 상태변경 / 코멘트 / 제외
+    from_state: Mapped[str | None] = mapped_column(String(20))
+    to_state: Mapped[str | None] = mapped_column(String(20))
+    comment: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_pool_event_pool", "pool_id"),)
+
+
+class PersonBlocklist(Base):
+    """삭제 요청 후보의 재수집 차단 목록 (PRD §5.2).
+
+    개인정보 최소화를 위해 이름 원문 대신 해시만 저장한다.
+    """
+
+    __tablename__ = "person_blocklist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    identity_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class ReviewQueue(Base):
