@@ -16,12 +16,13 @@ from core import review as R
 from core.audit import log_access
 from core.auth import can_review
 from core.guard import confidential_notice, require
+from core.ui.components import page_header
 from data import repository
 
 user = require("review")
 editable = can_review(user.role)
 
-st.title("검수")
+page_header("검수")
 confidential_notice()
 
 pending = R.pending_people()
@@ -69,9 +70,11 @@ done = R.processed_paths(picked)
 rows = []
 for entity, row in items:
     eid = getattr(row, R._PK[entity])
+    processed = R._path(entity, eid) in done
     rows.append({"구분": R.ENTITY_LABELS[entity], "내용": summarize(entity, row),
-                 "처리": "처리됨" if R._path(entity, eid) in done else "미처리",
-                 "수정됨": "예" if row.manually_edited else "-", "_key": (entity, eid)})
+                 # 미검수 항목이 눈에 바로 띄도록 색 신호를 함께 준다(디자인 원칙 2·3).
+                 "처리": "🟢 처리됨" if processed else "⚪ 미처리",
+                 "수정됨": "✏️ 예" if row.manually_edited else "-", "_key": (entity, eid)})
 st.dataframe([{k: v for k, v in r.items() if k != "_key"} for r in rows], hide_index=True, width="stretch")
 
 # ------------------------------------------------------------------ 3분할 검수 (F-08-2)
@@ -79,7 +82,7 @@ st.dataframe([{k: v for k, v in r.items() if k != "_key"} for r in rows], hide_i
 if rows:
     keys = [r["_key"] for r in rows]
     labels = {r["_key"]: f"[{r['처리']}] {r['구분']} · {r['내용']}" for r in rows}
-    unprocessed = [k for k in keys if labels[k].startswith("[미처리]")]
+    unprocessed = [k for k in keys if "미처리" in labels[k].split("]")[0]]
     key = st.selectbox("검수할 항목", keys, index=keys.index(unprocessed[0]) if unprocessed else 0,
                        format_func=lambda k: labels[k])
     entity, eid = key

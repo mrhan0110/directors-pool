@@ -15,6 +15,7 @@ from core import constants as C
 from core.audit import log_access
 from core.auth import can_edit_pool
 from core.guard import confidential_notice, require
+from core.ui.components import candidate_card, badge_html, page_header
 from data import repository
 from reports import exports
 from reports.builder import check_export
@@ -23,7 +24,7 @@ from reports.xlsx import ExportMeta, build_table_xlsx
 user = require("pool")
 editable = can_edit_pool(user.role)
 
-st.title("POOL 관리")
+page_header("POOL 관리")
 confidential_notice()
 
 # ------------------------------------------------------------------ 새 POOL
@@ -112,13 +113,22 @@ members = pools.members(pool.pool_id)
 if not members:
     st.caption("등록된 후보가 없습니다. 후보 검색 화면에서 선택해 저장하거나 아래에서 추가하세요.")
 else:
+    # 상태별 칸반 보드 (3단계 §C S-05). 보류·제외는 색으로도 구분한다(디자인 원칙 2).
     states = list(pools.FLOW) + [pools.HOLD, pools.EXCLUDED]
+    tone_of = {pools.EXCLUDED: C.SCREEN_FAIL, pools.HOLD: C.SCREEN_WARN}
     cols = st.columns(len(states))
     for col, s in zip(cols, states):
         in_state = [m for m in members if m.state == s]
-        col.markdown(f"**{s}** ({len(in_state)})")
-        for m in in_state:
-            col.caption(m.name_ko + (" · 검수완료" if m.profile_status == C.PROFILE_REVIEWED else " · 미검수"))
+        with col:
+            st.markdown(
+                badge_html(tone_of.get(s, C.SCREEN_INFO), text=f"{s} · {len(in_state)}"),
+                unsafe_allow_html=True,
+            )
+            for m in in_state:
+                candidate_card(
+                    m.name_ko,
+                    meta=["검수완료" if m.profile_status == C.PROFILE_REVIEWED else "미검수"],
+                )
     st.dataframe(
         [
             {"후보": m.name_ko, "상태": m.state, "사유": m.reason or "-", "메모": m.note or "-",

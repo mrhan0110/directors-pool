@@ -6,12 +6,13 @@ import streamlit as st
 
 from core import codes as CODES, constants as C, scoring, state
 from core.audit import log_access
-from core.guard import confidential_notice, require, stage_notice
+from core.guard import confidential_notice, require
+from core.ui.components import badge_html, page_header
 from data import repository
 
 user = require("compare")
 
-st.title("후보 비교")
+page_header("후보 비교")
 confidential_notice()
 
 basket = state.compare_basket()
@@ -37,16 +38,11 @@ log_access(user.user_id, C.ACT_VIEW, page="compare", target_person_ids=picked)
 details = [repository.get_person_detail(pid) for pid in picked]
 details = [d for d in details if d is not None]
 
-rows = {
-    "성별": [],
-    "나이": [],
-    "현재 직업": [],
-    "전문분야": [],
-    "타사 등기임원": [],
-    "스크리닝": [],
-    "적합도": [],
-    "검수 상태": [],
+rows: dict[str, list[str]] = {
+    "성별": [], "나이": [], "현재 직업": [], "전문분야": [],
+    "타사 등기임원": [], "스크리닝": [], "적합도": [], "검수 상태": [],
 }
+screening_status: list[str] = []
 
 for d in details:
     p = d.person
@@ -64,12 +60,36 @@ for d in details:
     rows["현재 직업"].append(f"{current.org_name} {current.title}" if current else "-")
     rows["전문분야"].append(", ".join(exp_labels) or "-")
     rows["타사 등기임원"].append(f"{sum(1 for x in d.directorships if x.is_current)}개")
-    rows["스크리닝"].append(C.SCREEN_BADGE[worst])
+    rows["스크리닝"].append(worst)
+    screening_status.append(worst)
     rows["적합도"].append(scoring.NOT_IMPLEMENTED_LABEL)
     rows["검수 상태"].append(p.profile_status)
 
-table = [{"항목": key, **{d.person.name_ko: val for d, val in zip(details, vals)}}
-         for key, vals in rows.items()]
-st.dataframe(table, hide_index=True, use_container_width=True)
+# ------------------------------------------------------------------ 비교 그리드 (3단계 §C S-03)
+# st.columns 4열, 항목명은 좌측 고정, 후보마다 값이 다른 행은 강조한다.
 
-stage_notice("차이 값 강조·항목 확장 비교는 3단계(C)에서 구현합니다.")
+widths = [1.1] + [1] * len(details)
+header_cols = st.columns(widths)
+header_cols[0].markdown("**항목**")
+for col, d in zip(header_cols[1:], details):
+    col.markdown(f"**{d.person.name_ko}**")
+
+st.divider()
+
+for label, values in rows.items():
+    row_cols = st.columns(widths)
+    row_cols[0].markdown(f"**{label}**")
+    differs = len(set(values)) > 1
+    for i, (col, value) in enumerate(zip(row_cols[1:], values)):
+        if label == "스크리닝":
+            col.markdown(badge_html(value), unsafe_allow_html=True)
+        elif differs:
+            col.markdown(
+                f'<span style="background:var(--pool-amber-soft);padding:.1rem .4rem;'
+                f'border-radius:4px;">{value}</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            col.write(value)
+
+st.caption("배경색이 있는 값은 후보 간 차이가 있는 항목입니다. " + scoring.DISCLAIMER)
