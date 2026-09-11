@@ -1,0 +1,25 @@
+[theme]
+# 3단계에서 확정. 1단계는 기본 톤만 지정
+primaryColor = "#1F4E79"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6F8"
+textColor = "#1A1A1A"
+
+[server]
+headless = true
+# 실명 개인정보를 다루므로 교차 출처 접근을 제한한다.
+# enableCORS=false 로 두면 'Access-Control-Allow-Origin: *' 가 나가고 어떤 오리진에서도
+# WebSocket 연결이 가능해진다. 반드시 true 를 유지할 것.
+enableCORS = true
+enableXsrfProtection = true
+# 운영 배포 시 실제 도메인으로 교체 (PRD F-09-19)
+# corsAllowedOrigins = ["https://pool.example.com"]
+# allowedHosts = ["pool.example.com"]
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# 사용자에게 스택 트레이스를 노출하지 않는다 (PRD 3단계 D)
+showErrorDetails = false
+toolbarMode = "minimal"

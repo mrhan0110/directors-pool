@@ -1,0 +1,102 @@
+"""데이터가 있는 상태에서 각 페이지가 실제로 렌더링되는지 검증한다.
+
+빈 DB 만으로 테스트하면 페이지가 조기 st.stop() 해서 렌더링 버그를 놓친다.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+from core import constants as C
+from core.auth import CurrentUser
+from core.state import K_LAST_ACTIVE, K_USER
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+PAGES_WITH_TABLE = [
+    "pages/0_대시보드.py",
+    "pages/1_후보_검색.py",
+    "pages/4_POOL_관리.py",
+    "pages/7_관리자.py",
+]
+ALL_PAGES = PAGES_WITH_TABLE + [
+    "pages/2_후보_상세.py",
+    "pages/3_후보_비교.py",
+    "pages/5_검수.py",
+    "pages/6_리포트.py",
+    "pages/8_공유_관리.py",
+]
+
+
+def _run(path: str, role: str = C.ROLE_ADMIN):
+    at = AppTest.from_file(str(PROJECT_ROOT / path), default_timeout=60)
+    at.session_state[K_USER] = CurrentUser(
+        user_id=1, email="admin@example.com", display_name="가상 관리자", role=role
+    )
+    at.session_state[K_LAST_ACTIVE] = datetime.now(timezone.utc)
+    return at.run()
+
+
+# 데이터에 따라 의도적으로 st.error 로 표시하는 도메인 경고.
+# 이것들은 렌더링 오류가 아니므로 허용한다. (출처 누락 F-05-1 등은 허용하지 않는다)
+EXPECTED_DOMAIN_ALERTS = ("(PRD F-03-2)", "(PRD F-08-1)")
+
+
+@pytest.mark.parametrize("path", ALL_PAGES)
+def test_page_renders_without_exception(path):
+    at = _run(path)
+    assert not at.exception, f"{path}: {at.exception}"
+    unexpected = [
+        e.value for e in at.error if not any(tag in e.value for tag in EXPECTED_DOMAIN_ALERTS)
+    ]
+    assert not unexpected, f"{path} 에 오류 메시지가 표시됨: {unexpected}"
+
+
+@pytest.mark.parametrize("path", PAGES_WITH_TABLE)
+def test_page_shows_data(path):
+    at = _run(path)
+    assert len(at.dataframe) > 0, f"{path} 가 데이터를 표시하지 않음"
+
+
+def test_search_page_has_no_text_input():
+    """검색은 드롭다운 전용이다. 키워드 입력창이 있으면 원칙 위반 (불변규칙 3)."""
+    at = _run("pages/1_후보_검색.py")
+    assert len(at.text_input) == 0, "후보 검색 화면에 텍스트 입력창이 존재함"
+    assert len(at.selectbox) > 0
+    assert len(at.multiselect) > 0
+
+
+def test_search_page_reports_truncation():
+    """결과가 잘렸을 때 '전체 매칭 N명 중 상위 M명' 이 표기되는지 (PRD F-01-8)."""
+    at = AppTest.from_file(str(PROJECT_ROOT / "pages/1_후보_검색.py"), default_timeout=60)
+    at.session_state[K_USER] = CurrentUser(
+        user_id=1, email="staff@example.com", display_name="가상 담당자", role=C.ROLE_STAFF
+    )
+    at.session_state[K_LAST_ACTIVE] = datetime.now(timezone.utc)
+    at.session_state["search.result_limit_code"] = "N10"
+    at.run()
+    assert not at.exception
+    banners = [w.value for w in at.warning] + [s.value for s in at.success]
+    assert any("전체 매칭" in b for b in banners), f"절단 안내가 없음: {banners}"
+
+
+def test_detail_page_shows_source_for_every_fact():
+    """상세 화면에 출처 없는 값 경고가 뜨지 않아야 한다 (PRD F-05-1)."""
+    at = _run("pages/2_후보_상세.py")
+    assert not at.exception
+    assert not any("출처 정보가 없습니다" in e.value for e in at.error)
+
+
+def test_report_page_blocks_unreviewed_export():
+    """검수 미완료 프로파일은 출력이 차단된다 (PRD F-08-1)."""
+    at = _run("pages/6_리포트.py")
+    assert not at.exception
+    # 시드 데이터의 대부분은 미검수이므로 차단 메시지 또는 허용 메시지 중 하나가 떠야 한다
+    messages = [e.value for e in at.error] + [s.value for s in at.success]
+    assert messages, "출력 가능 여부가 표시되지 않음"
+    # 다운로드 버튼은 1단계에서 항상 비활성
+    assert all(b.disabled for b in at.button if "PDF" in b.label)
