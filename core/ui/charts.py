@@ -41,9 +41,32 @@ def gender_age_dataframe(rows) -> pd.DataFrame:
     return pd.DataFrame(ordered).T
 
 
-def reputation_year_dataframe(by_year: dict[int, dict[str, int]]) -> pd.DataFrame:
-    """평판 논조 추이 — 연도 × 긍정/중립/부정 건수 (3단계 §E)."""
-    return pd.DataFrame(by_year).T
+_POLARITY_COLOR = {"긍정": "#1E6B34", "중립": "#8A97A6", "부정": "#B3261E"}
+
+
+def reputation_trend_chart(by_year: dict[int, dict[str, int]]) -> alt.Chart:
+    """평판 논조 추이 — 연도 × 긍정/중립/부정 건수. 색은 의미 전달에만 쓴다(디자인 원칙 2)."""
+    rows = [
+        {"연도": str(year), "논조": polarity, "건수": count}
+        for year, counts in sorted(by_year.items())
+        for polarity, count in counts.items()
+    ]
+    df = pd.DataFrame(rows)
+    return (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("연도:N", title=None),
+            y=alt.Y("건수:Q", title=None),
+            color=alt.Color(
+                "논조:N",
+                scale=alt.Scale(domain=list(_POLARITY_COLOR), range=list(_POLARITY_COLOR.values())),
+                legend=alt.Legend(title=None, orient="top"),
+            ),
+            tooltip=["연도", "논조", "건수"],
+        )
+        .properties(height=220)
+    )
 
 
 def career_timeline_chart(positions) -> alt.Chart | None:

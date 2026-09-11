@@ -28,7 +28,7 @@
 - [x] 3-1 전역 스타일: `.streamlit/config.toml` 테마 확정, `core/ui/style.py`(CSS 한 곳 주입), app.py 에서 1회 주입
 - [x] 3-2 재사용 컴포넌트 `core/ui/components.py`: status_badge/source_popover/metric_card/candidate_card/term_gauge/confidential_banner/result_count_banner
 - [x] 3-3 S-01 대시보드 + S-02 검색: 배너·배지 컴포넌트 적용, 성별·연령 분포 차트(Altair, `core/ui/charts.py`)
-- [ ] 3-4 S-04 상세: 출처를 expander→popover 로, 요약헤더 정리, 잔여임기 게이지, 경력 타임라인 차트
+- [x] 3-4 S-04 상세: 출처를 expander→popover 로, 요약헤더 정리, 잔여임기 게이지, 경력 타임라인 차트 + 평판 논조 추이 차트
 - [ ] 3-5 S-03 비교 + S-05 POOL 칸반 + S-06 검수 3분할 다듬기
 - [ ] 3-6 S-07 리포트 + S-08 관리자 + S-09 공유관리 표 다듬기, S-00 로그인 다듬기
 - [ ] 3-7 DoD 검증(전 화면 통일 테마·1280px 무가로스크롤·스타일 코드 core/ui/ 집중) + 발견된 기능 버그 목록 정리 + 커밋

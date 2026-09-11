@@ -20,11 +20,13 @@ from core import sources as SRC
 from core.audit import log_access, log_denied
 from core.auth import can_edit_pool, can_override_screening, can_review
 from core.guard import confidential_notice, require
+from core.ui import charts as UI_CHARTS
+from core.ui.components import page_header, source_popover, term_gauge
 from data import repository
 
 user = require("detail")
 
-st.title("후보 상세 프로파일")
+page_header("후보 상세 프로파일")
 confidential_notice()
 
 # 후보 선택도 드롭다운으로 한다 (불변규칙 3). 외부뷰어는 공유받은 POOL 구성원만 (F-09-12)
@@ -68,18 +70,9 @@ conflicts = SRC.conflict_index(SRC.conflicts_of(picked))
 score_row = scoring.get(picked)
 
 
-def show_source(src, label: str = "출처 보기") -> None:
-    if src is None:
-        st.error("출처 정보가 없습니다. 표시되어서는 안 되는 데이터입니다. (PRD F-05-1)")
-        return
-    old = SRC.is_outdated(src, policy)
-    with st.expander(f"{label} · {src.source_tier}등급" + (f" · {SRC.OUTDATED_LABEL}" if old else "")):
-        st.caption(src.citation())
-        st.markdown(f"[원문 열기]({src.url})")
-        if src.quote_snippet:
-            st.caption(f"인용: {src.quote_snippet}")
-        if old:
-            st.caption("최신성 기준을 넘은 출처입니다. 최신 자료로 재확인이 필요합니다. (PRD F-05-4)")
+def show_source(src, label: str = "출처") -> None:
+    """출처 팝오버 (F-05-1·2, 3단계 §B) — 값 옆에서 바로 열어 확인한다."""
+    source_popover(src, outdated=(src is not None and SRC.is_outdated(src, policy)), label=label)
 
 
 def source_block(source_id: int) -> None:
@@ -131,6 +124,19 @@ if status == C.SCREEN_FAIL:
     st.warning("스크리닝에서 결격 가능 판정이 있습니다. 아래 ⑦의 룰별 판정과 법무 검토를 확인하세요.")
 
 st.divider()
+
+# ------------------------------------------------------------------ 경력 타임라인 (3단계 §E)
+
+timeline_positions = sorted(
+    (pos for pos in detail.positions if pos.start_date is not None),
+    key=lambda pos: pos.start_date, reverse=True,
+)[:15]
+timeline = UI_CHARTS.career_timeline_chart(timeline_positions)
+if timeline is not None:
+    st.subheader("경력 타임라인")
+    st.altair_chart(timeline, use_container_width=True)
+    st.caption("최근 시작일 기준 최대 15건. 세부 근거는 각 섹션의 출처를 확인하세요.")
+    st.divider()
 
 # ------------------------------------------------------------------ 전문분야 (F-04-3·4)
 
@@ -297,7 +303,11 @@ else:
             }
         )
     if imminent:
-        st.warning(f"잔여 임기 {alert_months}개월 이내: " + ", ".join(imminent) + " (PRD F-03-1)")
+        st.caption(f"잔여 임기 {alert_months}개월 이내 (PRD F-03-1)")
+        for d in current_dirs:
+            remaining = d.remaining_term_months()
+            if remaining is not None and 0 <= remaining <= alert_months:
+                term_gauge(remaining, alert_months, f"{d.company_name} · {d.role_type} — {career.remaining_label(remaining)}")
     st.dataframe(table, hide_index=True, width="stretch", column_config=LINK)
     st.caption("이사회 출석률은 직전 사업연도 사업보고서 공시 기준입니다. (PRD F-03-3)")
 
@@ -332,6 +342,7 @@ else:
     s2.metric("사실관계 미확인", f"{sig.unverified}건")
     s3.metric("확인된 부정 이슈", f"{sig.verified_negative}건")
     if sig.by_year:
+        st.altair_chart(UI_CHARTS.reputation_trend_chart(sig.by_year), use_container_width=True)
         st.dataframe(
             [{"연도": y, **counts} for y, counts in sig.by_year.items()], hide_index=True, width="stretch"
         )
