@@ -3,11 +3,13 @@
 상장회사 이사회 사무국이 독립이사(사외이사) 후보자 POOL을 구축·관리하는 사내 Streamlit 앱.
 요구사항 원천은 `PRD_독립이사_후보자_POOL.md`, 구현 순서는 `PROMPTS_단계별_개발.md`를 따른다.
 
-> **현재 단계: 2단계(기능 추가) 완료.** 검색·상세·비교·POOL 관리·검수·리포트(PDF/XLSX)·공유·관리자 화면과
-> 스크리닝·전문분야 분류·적합도 점수·수집 적재 파이프라인까지 실제 로직으로 동작한다.
+> **현재 단계: 3단계(UI 디자인) 완료.** 검색·상세·비교·POOL 관리·검수·리포트(PDF/XLSX)·공유·관리자 화면과
+> 스크리닝·전문분야 분류·적합도 점수·수집 적재 파이프라인이 실제 로직으로 동작하며, 전 화면이
+> `core/ui/`(테마·재사용 컴포넌트·차트) 한 곳의 통일된 스타일을 공유한다.
 > DART·뉴스·기업 홈페이지의 **실제 외부 API 호출**은 API 키가 없어 미구현 상태이며(`collectors/*.py`),
 > `DATA_MODE=dummy`(기본값)로는 동일한 적재 파이프라인(`core/ingest.py`)을 가짜 데이터로 통과시켜 검증한다.
-> 다음은 3단계(UI 다듬기)·4단계(검토)이며, `PROMPTS_단계별_개발.md`를 따른다.
+> 다음은 4단계(PRD 부합성·버그 검토)이며, `PROMPTS_단계별_개발.md`를 따른다. 3단계에서 발견했지만
+> 고치지 않은 기능 버그 1건은 `PROGRESS.md`를 참고.
 
 > ⚠️ **실명 데이터 금지.** 개발·테스트는 `data/seed.py`가 만드는 합성 더미데이터(`가상001 …`, `example.com` URL)만 사용한다.
 > Streamlit Community Cloud 등 퍼블릭 환경에 실명 데이터를 배포하지 않는다 (PRD §6.9 (4)).
@@ -98,6 +100,7 @@ pytest -p pytest_cov.plugin -p no:logging --cov=core --cov=data --cov=batch --co
 app.py            진입점 · 모의 로그인
 pages/            Streamlit 화면 (0 대시보드 ~ 8 공유 관리). 모든 페이지 최상단에서 권한 재검증
 core/             도메인 로직 (search, scoring, screening, expertise, career, ingest, auth, audit, state, settings, codes, guard, sharing, access, pools, review …)
+core/ui/          화면 표현 계층 — style.py(전역 CSS 1곳) · components.py(배지·팝오버·게이지·배너 등) · charts.py(Altair)
 data/             SQLAlchemy 모델 · repository · 세션 · 시드
 collectors/       DART · 뉴스 · 웹 수집기 (화이트리스트·robots.txt 가드는 동작, 실제 API 호출부는 키 없어 미구현)
 reports/          PDF/XLSX 출력 (개인 프로파일·POOL 요약, 워터마크·검수완료 게이트 적용)
