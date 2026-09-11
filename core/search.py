@@ -100,14 +100,18 @@ def _concurrent_count_sq():
 
 
 def _screening_case():
-    """룰 판정 중 가장 나쁜 결과를 후보의 스크리닝 상태로 본다."""
+    """룰 판정 중 가장 나쁜 결과를 후보의 스크리닝 상태로 본다.
+
+    법무 수기 판정(reviewer_override)이 있으면 자동 판정보다 우선한다. info 는 pass 취급.
+    """
+    effective = func.coalesce(ScreeningResult.reviewer_override, ScreeningResult.result)
     has_fail = exists().where(
         ScreeningResult.person_id == Person.person_id,
-        ScreeningResult.result == C.SCREEN_FAIL,
+        effective == C.SCREEN_FAIL,
     )
     has_warn = exists().where(
         ScreeningResult.person_id == Person.person_id,
-        ScreeningResult.result == C.SCREEN_WARN,
+        effective == C.SCREEN_WARN,
     )
     return case((has_fail, C.SCREEN_FAIL), (has_warn, C.SCREEN_WARN), else_=C.SCREEN_PASS)
 
@@ -348,8 +352,13 @@ def _expertise_labels(s, ids: Sequence[int]) -> dict[int, list[str]]:
         return {}
     stmt = (
         select(Expertise.person_id, Expertise.taxonomy_code)
-        .where(Expertise.person_id.in_(ids), Expertise.is_primary.is_(True))
-        .order_by(Expertise.person_id)
+        .where(
+            Expertise.person_id.in_(ids),
+            Expertise.is_primary.is_(True),
+            # 근거 스니펫 없는 전문분야는 목록에도 내보내지 않는다 (불변규칙 2)
+            func.trim(Expertise.evidence_snippet) != "",
+        )
+        .order_by(Expertise.person_id, Expertise.score.desc())
     )
     labels_l1 = CODES.code_map(C.CODE_EXPERTISE_L1)
     labels_l2 = CODES.code_map(C.CODE_EXPERTISE_L2)

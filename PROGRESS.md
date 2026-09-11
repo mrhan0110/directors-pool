@@ -18,15 +18,16 @@
 
 ## ▶ 다음 작업
 
-**2-2. E 스크리닝 룰엔진** (§E). `core/screening.py`의 `evaluate()`를 룰별 함수로 구현, `evaluate_and_store(person_id)`로 저장(override 보존), `tests/test_screening.py` 작성.
-- 참고: 2-1에서 settings에 `get_str/get_float/get_list/validate` 추가됨. 자사 판정은 `org_name`이 자사명/계열사명과 **일치 또는 포함**으로 비교.
+**2-3. D 전문분야 자동 분류** (§D). 파일: `core/expertise_rules.py`(키워드 사전+직업코드 힌트), `core/expertise.py`(Evidence→classify_evidence→store, confirm/set_primary/remove + ExpertiseHistory, displayable 가드, LLM 검증 가드), `tests/test_expertise.py`.
+- 사용자가 삭제한 코드는 ExpertiseHistory 마지막 action=`삭제`로 판정해 재분류 시 다시 넣지 않음. confirmed/manually_edited 행은 재분류가 건드리지 않음.
+- 2-2 메모: 스크리닝 API = `OrgContext.load()`, `evaluate_input/evaluate/evaluate_and_store/evaluate_all`, `set_override`, `effective`, `worst`. 현 더미데이터상 R-01·R-02·R-05 전원 pass → **2-5 시드에 자사·계열사·대주주·장기재직·`형사 판결` 케이스 추가 필요**.
 
 ## 2단계 작업 단위 체크리스트
 
 각 단위 = 구현 + 테스트 + 커밋. 순서대로 진행.
 
 - [x] 2-1 모델·설정 확장 (신규 테이블/컬럼, AppSetting 키, SCREEN_INFO) — §M
-- [ ] 2-2 E 스크리닝 룰엔진 R-01~R-08 (`core/screening.py`) — §E
+- [x] 2-2 E 스크리닝 룰엔진 R-01~R-08 (`core/screening.py`) — §E
 - [ ] 2-3 D 전문분야 자동 분류 (`core/expertise_rules.py`, `core/expertise.py`) — §D
 - [ ] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F
 - [ ] 2-5 시드 재작성: 엔진으로 스크리닝·분류·점수 산출, 자사/충돌/수동검수 케이스 포함 + `batch/run.py`

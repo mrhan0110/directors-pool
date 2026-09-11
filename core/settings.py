@@ -158,6 +158,32 @@ DEFAULTS: list[dict] = [
         "value_type": "float",
         "description": "타사 이사회 출석률이 이 값 미만이면 성실성 확인 필요 (PRD F-03 (7)-5)",
     },
+    {
+        "key": C.SET_R06_FAIL_CATEGORIES,
+        "value": "규제 제재,형사 판결",
+        "value_type": "list",
+        "description": "확인·확정 시 결격 가능(🔴)으로 판정할 부정 이슈 유형. 그 외 유형은 확인 필요(🟡) (PRD R-06)",
+        "legal_basis": "상법 사외이사 결격사유(금고 이상 형, 금융관련법령 제재) — 법무 확인 필요",
+    },
+    {
+        "key": C.SET_AUDIT_EXPERT_CERTS,
+        "value": "공인회계사",
+        "value_type": "list",
+        "description": "감사위원 회계·재무 전문가 요건 근거로 인정할 자격 (PRD R-07)",
+        "legal_basis": "상법 시행령 감사위원 회계·재무 전문가 요건 — 법무 확인 필요",
+    },
+    {
+        "key": C.SET_AUDIT_EXPERT_JOBS,
+        "value": "ACCT_CPA,ACCT_AUDIT,CORP_CFO,GOV_FSC",
+        "value_type": "list",
+        "description": "감사위원 요건 근거로 인정할 직업 중분류 코드 (PRD R-07)",
+    },
+    {
+        "key": C.SET_AUDIT_EXPERT_EXPERTISE,
+        "value": "EXP_FIN,EXP_AUD",
+        "value_type": "list",
+        "description": "감사위원 요건 근거로 인정할 전문분야 코드 접두어 (PRD R-07)",
+    },
     # ---------------- 적합도 가중치 (PRD F-06)
     {"key": C.SET_W_EXPERTISE, "value": "40", "value_type": "int",
      "description": "적합도 — 전문분야 매칭도 가중치"},

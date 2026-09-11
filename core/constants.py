@@ -144,6 +144,10 @@ SET_BOARD_FEMALE_COUNT = "org.board_female_count"
 SET_BOARD_SKILL_GAPS = "org.board_skill_gaps"
 SET_GENDER_RULE_ASSET_THRESHOLD = "rule.gender_rule_asset_threshold_krw"
 SET_ATTENDANCE_WARN_RATE = "rule.attendance_warn_rate"
+SET_R06_FAIL_CATEGORIES = "rule.r06_fail_categories"
+SET_AUDIT_EXPERT_CERTS = "rule.audit_expert_certs"
+SET_AUDIT_EXPERT_JOBS = "rule.audit_expert_job_codes"
+SET_AUDIT_EXPERT_EXPERTISE = "rule.audit_expert_expertise_prefixes"
 
 # 적합도 가중치 (PRD F-06)
 SET_W_EXPERTISE = "score.weight.expertise_match"
