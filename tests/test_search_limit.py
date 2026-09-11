@@ -45,9 +45,25 @@ def test_viewer_small_selection_is_not_capped():
     assert capped is None
 
 
-def test_search_reports_total_and_shown(monkeypatch):
-    """빈 DB 에서도 total/shown 이 일관되게 보고되는지 확인."""
+def test_search_reports_total_and_shown():
+    """shown 은 min(상한, 전체) — '전체 N명 중 상위 M명'의 M 이다 (F-01-8)."""
     result = search.search({}, "N10", C.ROLE_STAFF)
-    assert result.shown == len(result.rows)
-    assert result.shown <= result.effective_limit
+    assert result.shown == min(result.effective_limit, result.total_matched)
+    assert len(result.rows) <= min(result.shown, result.page_size)
     assert result.total_matched >= result.shown
+    assert result.truncated == (result.shown < result.total_matched)
+
+
+def test_when_matches_fewer_than_limit_all_are_shown():
+    """선택 인원 수보다 매칭이 적으면 매칭 수만 표시한다 (절단 아님)."""
+    result = search.search({}, "N200", C.ROLE_STAFF)
+    assert result.shown == result.total_matched
+    assert not result.truncated
+
+
+def test_zero_matches():
+    result = search.search({"nationalities": ["CN"]}, "N30", C.ROLE_STAFF)
+    assert result.total_matched == 0
+    assert result.shown == 0
+    assert result.rows == []
+    assert result.page_count == 1

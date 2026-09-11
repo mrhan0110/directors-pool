@@ -17,6 +17,9 @@ K_LAST_ACTIVE = "auth.last_active"
 K_FILTERS = "search.filters"
 K_RESULT_LIMIT = "search.result_limit_code"
 K_LAST_SEARCH = "search.last_result"
+K_PAGE = "search.page"
+K_SIGNATURE = "search.signature"      # 조건이 바뀌면 1페이지로 돌아가기 위한 비교값
+K_LOGGED = "search.logged_signature"  # 같은 검색을 재실행마다 중복 로깅하지 않기 위함
 K_SELECTED_PERSON = "nav.selected_person_id"
 K_COMPARE_BASKET = "nav.compare_basket"
 K_TOAST = "ui.toast"
@@ -96,6 +99,9 @@ def clear_user_scoped() -> None:
         K_FILTERS,
         K_RESULT_LIMIT,
         K_LAST_SEARCH,
+        K_PAGE,
+        K_SIGNATURE,
+        K_LOGGED,
         K_SELECTED_PERSON,
         K_COMPARE_BASKET,
     ):

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
@@ -47,16 +48,27 @@ class SearchRow:
     directorship_summary: str = ""
     fit_score: float | None = None  # None = 미산출 (PRD F-06)
     fit_basis: str = ""             # 점수 근거 요약 (PRD §6.2)
+    name_en: str | None = None      # 동명이인 구분용 (PRD §6.2 '한글명(영문명)')
+    birth_year: int | None = None
+    current_since: date | None = None  # 현 직위 재직 시작일
 
 
 @dataclass
 class SearchResult:
     rows: list[SearchRow]
     total_matched: int          # 조건에 맞는 전체 인원 (절단 전)
-    shown: int                  # 실제 표시 인원
+    shown: int                  # 표시 대상 인원 M = min(상한, 전체). 페이지와 무관 (F-02-5)
     effective_limit: int        # 적용된 상한
     limit_capped_by: str | None  # 'system' | 'viewer' | None
     sort_code: str
+    page: int = 1
+    page_size: int = 50
+    page_count: int = 1
+
+    @property
+    def truncated(self) -> bool:
+        """결과가 잘렸는가 — 화면은 이 경우 반드시 '전체 N명 중 상위 M명'을 알린다 (F-01-8)."""
+        return self.shown < self.total_matched
 
 
 # ------------------------------------------------------------------ 상한 계산
@@ -282,16 +294,27 @@ def search(
     f: dict[str, Any],
     limit_code: str | None,
     role: str | None,
-    offset: int = 0,
+    page: int = 1,
 ) -> SearchResult:
+    """정렬 기준 적용 후 상위 N명 중 요청한 페이지만 DB 에서 가져온다 (F-01-8, F-02-5, F-09-5-1).
+
+    LIMIT/OFFSET 은 항상 상위 N명 범위 안에서만 움직인다.
+    """
     limit, capped_by = resolve_limit(limit_code, role)
     total = count_matches(f)
+    shown_total = min(limit, total)
+    page_size = max(1, settings.get_int(C.SET_PAGE_SIZE, default=50))
+    page_count = max(1, math.ceil(shown_total / page_size))
+    page = min(max(1, int(page)), page_count)
+    offset = (page - 1) * page_size
+    take = max(0, min(page_size, shown_total - offset))
     sort_code = f.get("sort") or "FIT"
     fit = scoring.fit_expr(f)
 
     stmt = select(
         Person.person_id,
         Person.name_ko,
+        Person.name_en,
         Person.gender,
         Person.birth_year,
         Person.age_estimated_yn,
@@ -302,7 +325,7 @@ def search(
     )
     stmt = _apply_filters(stmt, f)
     stmt = _apply_sort(stmt, sort_code, fit)
-    stmt = stmt.limit(limit).offset(offset)
+    stmt = stmt.limit(take).offset(offset)
 
     today = date.today()
     with session_scope() as s:
@@ -328,8 +351,11 @@ def search(
             gender=r.gender,
             age=(today.year - r.birth_year) if r.birth_year else None,
             age_estimated=bool(r.age_estimated_yn),
-            current_org=current_pos.get(r.person_id, (None, None))[0],
-            current_title=current_pos.get(r.person_id, (None, None))[1],
+            current_org=current_pos.get(r.person_id, (None, None, None))[0],
+            current_title=current_pos.get(r.person_id, (None, None, None))[1],
+            current_since=current_pos.get(r.person_id, (None, None, None))[2],
+            name_en=r.name_en,
+            birth_year=r.birth_year,
             concurrent_count=int(r.concurrent_count or 0),
             screening=r.screening,
             updated_at=r.updated_at,
@@ -344,14 +370,39 @@ def search(
     return SearchResult(
         rows=rows,
         total_matched=total,
-        shown=len(rows),
+        shown=shown_total,
         effective_limit=limit,
         limit_capped_by=capped_by,
         sort_code=sort_code,
+        page=page,
+        page_size=page_size,
+        page_count=page_count,
     )
 
 
-def _current_positions(s, ids: Sequence[int]) -> dict[int, tuple[str, str]]:
+def search_ids(f: dict[str, Any], limit_code: str | None, role: str | None) -> list[int]:
+    """현재 조건·정렬의 상위 N명 id (정렬 순서).
+
+    POOL 저장·XLSX 내보내기의 대상은 '현재 조회된 상위 N명'이다 (F-02-2, F-02-3).
+    """
+    limit, _ = resolve_limit(limit_code, role)
+    stmt = _apply_filters(select(Person.person_id), f)
+    stmt = _apply_sort(stmt, f.get("sort") or "FIT", scoring.fit_expr(f))
+    with session_scope() as s:
+        return list(s.execute(stmt.limit(limit)).scalars())
+
+
+STALE_DAYS = 183  # 데이터 최신성: 6개월 초과 시 흐리게 표시 (PRD §6.2)
+
+
+def is_stale(updated_at: datetime | None, today: date | None = None) -> bool:
+    if updated_at is None:
+        return True
+    today = today or date.today()
+    return updated_at.date() < today - timedelta(days=STALE_DAYS)
+
+
+def _current_positions(s, ids: Sequence[int]) -> dict[int, tuple[str, str, date | None]]:
     if not ids:
         return {}
     stmt = (
@@ -359,9 +410,9 @@ def _current_positions(s, ids: Sequence[int]) -> dict[int, tuple[str, str]]:
         .where(Position.person_id.in_(ids), Position.is_current.is_(True))
         .order_by(Position.person_id, Position.start_date.desc())
     )
-    out: dict[int, tuple[str, str]] = {}
-    for pid, org, title, _ in s.execute(stmt).all():
-        out.setdefault(pid, (org, title))
+    out: dict[int, tuple[str, str, date | None]] = {}
+    for pid, org, title, start in s.execute(stmt).all():
+        out.setdefault(pid, (org, title, start))
     return out
 
 

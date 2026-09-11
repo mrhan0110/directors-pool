@@ -18,7 +18,9 @@
 
 ## ▶ 다음 작업
 
-**2-6. A 검색 core + 필터 화면** (§A). core: `search(f, limit_code, role, page=1)` 페이지네이션(SearchResult에 page/page_size/page_count, `shown`=min(N,전체)), `search_ids()`(상위 N명 id — 내보내기·POOL 저장용), `core/presets.py`(목록/저장(이름 upsert)/삭제(소유자 확인)), `core/preferences.py`(get/set, 키 `search.limit_code`). 화면(`pages/1_후보_검색.py`): 건수 배지(`option_counts`를 `st.cache_data(ttl=60)`, 필터 JSON 키), 조건 칩 ✕ 해제, 프리셋 저장·불러오기, 최근 인원수 영속, 페이지 이동, 100명↑ 지연 안내+spinner, 적합도 상시 문구. `tests/test_search_limit.py`의 `shown == len(rows)` 단언은 페이지네이션에 맞게 수정.
+**2-7. B 결과 목록 액션 + XLSX** (§B). 이미 작성됨(미커밋 가능): `core/pools.py`(POOL CRUD·상태전이·코멘트·타임라인·동시수정 거부), `reports/xlsx.py`(build_table_xlsx, 워터마크), `reports/exports.py`(candidate_rows: 순위·출처 URL), 테스트 `tests/test_pools.py`, `tests/test_exports.py`. 남은 것: `core/search.py`에 `search_ranked()`(id, 적합도) 추가 → 검색 화면 결과표를 `st.dataframe(on_select="rerun", selection_mode="multi-row")`로 바꾸고 선택 후보 [상세] [비교함] [POOL 추가(기존/신규: 명칭·목적·대상 직위·메모)], XLSX 다운로드(상위 N명 전체, `check_export` 게이트 — 미검수 포함 시 비활성+사유, 다운로드 시 AccessLog export).
+
+**(완료) 2-6. A 검색 core + 필터 화면** (§A). core: `search(f, limit_code, role, page=1)` 페이지네이션(SearchResult에 page/page_size/page_count, `shown`=min(N,전체)), `search_ids()`(상위 N명 id — 내보내기·POOL 저장용), `core/presets.py`(목록/저장(이름 upsert)/삭제(소유자 확인)), `core/preferences.py`(get/set, 키 `search.limit_code`). 화면(`pages/1_후보_검색.py`): 건수 배지(`option_counts`를 `st.cache_data(ttl=60)`, 필터 JSON 키), 조건 칩 ✕ 해제, 프리셋 저장·불러오기, 최근 인원수 영속, 페이지 이동, 100명↑ 지연 안내+spinner, 적합도 상시 문구. `tests/test_search_limit.py`의 `shown == len(rows)` 단언은 페이지네이션에 맞게 수정.
 - 2-5 메모: 시드는 마지막에 `batch.run.run("analyze")` 호출(200명 ≈ 28초). 배치 CLI `python -m batch.run analyze|classify|screen|score`, AuditLog entity=`batch` start/finish/fail. **스크리닝 기관명 매칭은 정규화 후 정확 일치만**(부분 포함 매칭이 대주주 재단을 자사로 오판한 버그 수정).
 - 2-4 메모: 점수 API = `SC.Weights/ScoreContext.load`, `base_score`, `store/score_all/get/fit_score/breakdowns_in`, SQL `fit_expr(f)`, 표시 `display()/describe()`, 상시 문구 `SC.DISCLAIMER`. SearchRow에 `fit_score`(None=미산출), `fit_basis` 추가. **정렬: 결격만 하단 분리(🟡는 분리 안 함)**, 정렬 끝에 person_id로 안정 정렬.
 - 2-3 메모: 전문분야 API = `EXP.classify_evidence/evidence_from_detail/classify/store/classify_all`, `confirm/set_primary/remove/history_of`, 출력 가드 `EXP.displayable(expertises, sources)` — **상세·비교·리포트 화면은 반드시 이 가드를 거칠 것**. 현 seed의 duties가 "(더미) 주요 담당 업무"라 분류 근거가 빈약 → 2-5에서 키워드 포함 담당업무 문구로 교체.
@@ -33,7 +35,7 @@
 - [x] 2-3 D 전문분야 자동 분류 (`core/expertise_rules.py`, `core/expertise.py`) — §D
 - [x] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F
 - [x] 2-5 시드 재작성: 엔진으로 스크리닝·분류·점수 산출, 자사/충돌/수동검수 케이스 포함 + `batch/run.py`
-- [ ] 2-6 A 검색 core+화면: 건수 배지, 칩 해제, 프리셋, 최근 인원수 사용자별 저장, 페이지네이션 — §A
+- [x] 2-6 A 검색 core+화면: 건수 배지, 칩 해제, 프리셋, 최근 인원수 사용자별 저장, 페이지네이션 — §A
 - [ ] 2-7 B 결과 목록: 전체 컬럼, 행 선택→상세/POOL 추가/비교, XLSX 내보내기 — §B
 - [ ] 2-8 C 상세: 전 섹션, 출처 충돌(대체 정보), 구 정보 배지, 평판 정량, 18개 고려사항 체크리스트 — §C
 - [ ] 2-9 H POOL 관리(CRUD·상태 전이·사유·타임라인) + 검수(3분할·승인/수정/삭제·ReviewLog·충돌 알림) — §H

@@ -63,9 +63,13 @@ def test_page_shows_data(path):
 
 
 def test_search_page_has_no_text_input():
-    """검색은 드롭다운 전용이다. 키워드 입력창이 있으면 원칙 위반 (불변규칙 3)."""
+    """검색은 드롭다운 전용이다. 키워드 입력창이 있으면 원칙 위반 (불변규칙 3).
+
+    유일한 예외는 검색 조건이 아닌 '프리셋 이름' 입력(key=preset_name)이다.
+    """
     at = _run("pages/1_후보_검색.py")
-    assert len(at.text_input) == 0, "후보 검색 화면에 텍스트 입력창이 존재함"
+    others = [t for t in at.text_input if t.key != "preset_name"]
+    assert not others, f"후보 검색 화면에 검색용 텍스트 입력창이 존재함: {[t.key for t in others]}"
     assert len(at.selectbox) > 0
     assert len(at.multiselect) > 0
 
