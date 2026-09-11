@@ -97,6 +97,18 @@ def test_r01_unrelated_company_passes():
     assert v.result == C.SCREEN_PASS
 
 
+def test_r01_name_containing_own_company_is_not_a_match():
+    """회귀: '자사홀딩스재단'은 자사명을 포함하지만 자사가 아니다. 부분 포함 매칭은 오판을 만든다."""
+    v = S.rule_r01(CTX, data(positions=[pos("자사홀딩스재단", current=True)]), TODAY)
+    assert v.result == C.SCREEN_PASS
+
+
+def test_r01_name_normalization():
+    """'(주)'·공백 차이는 같은 회사로 본다."""
+    v = S.rule_r01(CTX, data(positions=[pos("(주) 자사 홀딩스", current=True)]), TODAY)
+    assert v.result == C.SCREEN_FAIL
+
+
 def test_r01_cooling_off_comes_from_context():
     """냉각기간을 3년으로 늘리면 2.5년 전 종료도 결격 가능이 된다 (하드코딩 금지 확인)."""
     p = pos("자사홀딩스", end=date(2024, 3, 1))

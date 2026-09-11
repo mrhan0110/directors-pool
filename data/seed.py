@@ -4,6 +4,9 @@
 이름은 '가상001 …' 형태로 생성해 실명과 혼동될 가능성을 없앤다.
 모든 URL 은 example.com 기반 가짜 URL 이다.
 
+전문분야·스크리닝·적합도는 직접 만들지 않고, 운영과 같은 엔진(batch.run.analyze)으로 산출한다.
+그래야 더미데이터로 테스트한 결과가 실제 로직을 검증한다.
+
 실행: python -m data.seed            (기존 DB 유지, 없는 것만 추가)
       python -m data.seed --reset    (전체 삭제 후 재생성)
 """
@@ -20,19 +23,18 @@ from sqlalchemy import select
 
 from core import codes as CODES
 from core import constants as C
-from core import expertise as EXP
 from core import settings
 from data.models import (
     Achievement,
     AppUser,
     Directorship,
+    FieldConflict,
     Person,
     PersonIndustry,
     Pool,
     PoolMember,
     Position,
     Reputation,
-    ScreeningResult,
     Source,
 )
 from data.session import init_db, session_scope
@@ -64,6 +66,39 @@ ORGS_BY_JOB = {
     "NGO": ["가상경영자총협회", "가상지속가능경영원"],
     "ETC": ["가상컨설팅"],
 }
+
+# 담당업무 문구 — 전문분야 분류 엔진이 근거로 쓰는 원문이다 (core/expertise_rules.py 키워드 포함)
+DUTIES_BY_JOB = {
+    "CORP": ["경영전략 및 신사업 총괄", "재무전략·IR 총괄", "해외사업·해외법인 관리",
+             "생산·품질 혁신 추진", "디지털 전환(DX) 추진", "ESG 지속가능경영 위원회 운영",
+             "M&A 인수합병 추진", "인사·조직문화 개편", "공급망 SCM 재편", "리스크관리 체계 구축",
+             "정보보호 조직 총괄(CISO)", "브랜드·마케팅 총괄"],
+    "ACAD": ["회계·공시 제도 연구", "회사법·지배구조 연구", "데이터·인공지능 연구",
+             "기후·탄소 정책 연구", "노동법 강의 및 연구", "개인정보 보호 법제 연구"],
+    "LAW": ["기업법무·M&A 자문", "공정거래 사건 수행", "금융규제 자문", "특허 등 지식재산 소송",
+            "송무·소송 총괄", "개인정보 규제 대응 자문"],
+    "ACCT": ["회계감사 및 IFRS 자문", "세무·조세 자문", "내부회계관리제도 구축 자문", "포렌식 부정조사"],
+    "GOV": ["금융감독 정책 입안", "공정거래 사건 심의", "조세 정책·세제 개편", "산업 정책 및 규제 대응",
+            "대외협력·대관"],
+    "FIN": ["신용리스크·시장리스크 관리", "사모펀드 PE 투자심사", "IPO 상장 주관",
+            "자산운용 포트폴리오 관리", "준법감시·컴플라이언스 총괄"],
+    "RES": ["산업 정책 연구", "데이터 경제 연구", "기후 에너지 정책 연구"],
+    "PUB": ["공공조달 혁신", "안전보건 경영 총괄", "정보보안 체계 고도화"],
+    "MEDIA": ["경제 정책 논설", "산업 취재 총괄"],
+    "NGO": ["지속가능경영 ESG 확산", "노사관계 자문"],
+    "ETC": ["경영전략 컨설팅", "사이버보안 컨설팅", "개인정보보호 컨설팅"],
+}
+
+ACHIEVEMENTS = [
+    ("경영 성과", "재임 중 흑자전환 등 턴어라운드 주도", "영업이익률 4%→9%"),
+    ("경영 성과", "해외진출 확대로 해외 매출 비중 확대", "해외 매출 비중 12%→28%"),
+    ("이사회 기여", "감사위원장으로 내부통제 개선 주도", "내부통제 지적사항 0건"),
+    ("전문분야 성과", "정보보안 관리체계 인증 획득 주도", None),
+    ("전문분야 성과", "ESG 공시 체계 수립", "지속가능경영보고서 최초 발간"),
+    ("전문분야 성과", "회사법 관련 저서 발간", None),
+    ("경영 성과", "M&A 후 통합(PMI) 완료", "시너지 연 300억원"),
+    ("전문분야 성과", "데이터·인공지능 관련 논문 발표", None),
+]
 
 TITLES_BY_LEVEL = {
     "L1": ["대표이사 사장", "대표이사 부회장", "총장", "원장", "청장(가상)"],
@@ -99,7 +134,8 @@ def _make_source(rng: random.Random, tier: str, idx: int) -> Source:
         publisher = rng.choice(PUBLISHERS_C)
         title = f"가상 기사 제목 {idx:04d}"
         url = f"https://news.example.com/article/{idx:06d}"
-        published = _rand_date(rng, 2023, 2026)
+        # 일부는 3년이 지난 기사 — '구 정보' 배지 확인용 (PRD F-05-4)
+        published = _rand_date(rng, 2020, 2026)
     return Source(
         publisher=publisher,
         doc_title=title,
@@ -136,6 +172,45 @@ def _seed_users(session) -> None:
         )
 
 
+def _add_special_cases(session, rng, i: int, person_id: int, src_a: Source) -> None:
+    """스크리닝 룰(R-01·R-02·R-05)이 실제로 걸리는 케이스를 결정적으로 만든다.
+
+    기관명은 AppSetting(자사·계열사·대주주) 값을 그대로 쓴다.
+    """
+    own = settings.get_str(C.SET_OWN_COMPANY)
+    affiliates = settings.get_list(C.SET_AFFILIATES)
+    holders = settings.get_list(C.SET_MAJOR_SHAREHOLDERS)
+
+    if i % 23 == 0:  # R-01: 자사 현직 상근
+        session.add(Position(
+            person_id=person_id, org_name=own, title="전무", role_level="L2",
+            job_l1_code="CORP", job_l2_code="CORP_EXE", is_current=True, is_full_time=True,
+            start_date=TODAY - timedelta(days=365 * 3), duties="경영전략 총괄",
+            source_id=src_a.source_id,
+        ))
+    if i % 29 == 0 and affiliates:  # R-01: 계열사 냉각기간 내 퇴직
+        session.add(Position(
+            person_id=person_id, org_name=affiliates[0], title="상무", role_level="L3",
+            job_l1_code="CORP", job_l2_code="CORP_EXE", is_current=False,
+            start_date=TODAY - timedelta(days=365 * 5), end_date=TODAY - timedelta(days=200),
+            duties="재무전략 담당", source_id=src_a.source_id,
+        ))
+    if i % 31 == 0 and holders:  # R-02: 최대주주 특수관계 기관 현직
+        session.add(Position(
+            person_id=person_id, org_name=holders[0], title="이사장", role_level="L1",
+            job_l1_code="NGO", job_l2_code="NGO_HEAD", is_current=True,
+            start_date=TODAY - timedelta(days=365 * 2), duties="재단 운영 총괄",
+            source_id=src_a.source_id,
+        ))
+    if i % 17 == 0:  # R-05: 자사 사외이사 장기 재직
+        session.add(Directorship(
+            person_id=person_id, company_name=own, listed_yn=True, role_type="사외이사",
+            appointed_date=TODAY - timedelta(days=365 * 7), term_end_date=TODAY + timedelta(days=200),
+            committee_roles=["감사위원회"], board_attendance_rate=0.95, is_current=True,
+            source_id=src_a.source_id,
+        ))
+
+
 def _seed_people(session, rng: random.Random) -> int:
     if session.execute(select(Person.person_id).limit(1)).first():
         return 0
@@ -144,7 +219,6 @@ def _seed_people(session, rng: random.Random) -> int:
     job_l2_by_parent: dict[str, list[str]] = {}
     for r in CODES.JOB_L2:
         job_l2_by_parent.setdefault(r["parent_code"], []).append(r["code"])
-    exp_l2_codes = [r["code"] for r in CODES.EXPERTISE_L2]
     industry_codes = [r["code"] for r in CODES.INDUSTRY]
     region_codes = [r["code"] for r in CODES.REGION]
     source_counter = 0
@@ -199,6 +273,7 @@ def _seed_people(session, rng: random.Random) -> int:
         n_pos = rng.randint(3, 8)
         cursor_year = TODAY.year - rng.randint(0, 2)
         made_current = False
+        current_pos: Position | None = None
         for k in range(n_pos):
             l1 = main_l1 if k < 2 or rng.random() < 0.7 else rng.choice(job_l1_codes)
             l2 = rng.choice(job_l2_by_parent.get(l1, ["ETC_OTHER"]))
@@ -210,26 +285,29 @@ def _seed_people(session, rng: random.Random) -> int:
             made_current = made_current or is_current
             # 일부는 의도적으로 10년 초과 이력으로 만들어 경력 필터를 검증할 수 있게 한다
             end_date = None if is_current else date(end_year, rng.randint(1, 12), rng.randint(1, 28))
-            session.add(
-                Position(
-                    person_id=person.person_id,
-                    org_name=rng.choice(ORGS_BY_JOB.get(l1, COMPANIES)),
-                    title=rng.choice(TITLES_BY_LEVEL[level]),
-                    role_level=level,
-                    job_l1_code=l1,
-                    job_l2_code=l2,
-                    is_registered_officer=level in ("L1", "L2") and rng.random() < 0.6,
-                    is_full_time=True,
-                    start_date=date(start_year, rng.randint(1, 12), rng.randint(1, 28)),
-                    end_date=end_date,
-                    duties="(더미) 주요 담당 업무",
-                    is_current=is_current,
-                    # 10년 초과지만 판단에 결정적인 이력 (PRD F-03 (3) 예외)
-                    is_highlight=(end_year < TODAY.year - 10 and level == "L1"),
-                    source_id=src_a.source_id,
-                )
+            pos = Position(
+                person_id=person.person_id,
+                org_name=rng.choice(ORGS_BY_JOB.get(l1, COMPANIES)),
+                title=rng.choice(TITLES_BY_LEVEL[level]),
+                role_level=level,
+                job_l1_code=l1,
+                job_l2_code=l2,
+                is_registered_officer=level in ("L1", "L2") and rng.random() < 0.6,
+                is_full_time=True,
+                start_date=date(start_year, rng.randint(1, 12), rng.randint(1, 28)),
+                end_date=end_date,
+                duties=rng.choice(DUTIES_BY_JOB.get(l1, DUTIES_BY_JOB["ETC"])),
+                is_current=is_current,
+                # 10년 초과지만 판단에 결정적인 이력 (PRD F-03 (3) 예외)
+                is_highlight=(end_year < TODAY.year - 10 and level == "L1"),
+                source_id=rng.choice([src_a.source_id, src_a.source_id, src_b.source_id]),
             )
+            session.add(pos)
+            if is_current:
+                current_pos = pos
             cursor_year = start_year - rng.randint(0, 2)
+
+        _add_special_cases(session, rng, i, person.person_id, src_a)
 
         # ---------------- 타사 등기임원 0~3건 (일부는 오버보딩)
         if rng.random() < 0.12:
@@ -269,19 +347,18 @@ def _seed_people(session, rng: random.Random) -> int:
                 )
             )
 
-        # ---------------- 전문분야 1~3개 (근거 스니펫 필수)
-        picked = rng.sample(exp_l2_codes, k=rng.randint(1, 3))
-        for order, code in enumerate(picked):
+        # 종료된 등기임원 이력 (PRD F-03-4 접기 영역 확인용)
+        if rng.random() < 0.3:
             session.add(
-                EXP.build(
+                Directorship(
                     person_id=person.person_id,
-                    taxonomy_code=code,
-                    evidence_snippet=f"(더미 근거) {code} 관련 경력·저술이 확인됨",
-                    source_id=rng.choice([src_a.source_id, src_b.source_id]),
-                    level="중",
-                    confidence=rng.choice(["상", "중", "하"]),
-                    evidence_count=rng.randint(1, 5),
-                    is_primary=True,
+                    company_name=rng.choice(COMPANIES),
+                    listed_yn=True,
+                    role_type="사외이사",
+                    appointed_date=_rand_date(rng, TODAY.year - 12, TODAY.year - 8),
+                    term_end_date=_rand_date(rng, TODAY.year - 7, TODAY.year - 2),
+                    is_current=False,
+                    source_id=src_a.source_id,
                 )
             )
 
@@ -297,49 +374,53 @@ def _seed_people(session, rng: random.Random) -> int:
         for _ in range(rng.choice([0, 1, 1, 2, 3])):
             polarity = rng.choices(["긍정", "중립", "부정"], weights=[45, 35, 20])[0]
             verified = rng.random() < (0.9 if polarity != "부정" else 0.45)
+            if polarity == "부정":
+                category = rng.choices(
+                    ["법적 분쟁", "규제 제재", "윤리 이슈", "형사 판결"], weights=[35, 30, 25, 10]
+                )[0]
+            else:
+                category = rng.choice(["수상·포상", "언론 인터뷰", "공익 활동", "학술상"])
             session.add(
                 Reputation(
                     person_id=person.person_id,
                     polarity=polarity,
-                    category=rng.choice(["수상·포상", "언론 인터뷰", "법적 분쟁", "규제 제재", "윤리 이슈"]),
+                    category=category,
                     event_date=_rand_date(rng, TODAY.year - 4, TODAY.year),
-                    summary=f"(더미) {polarity} 평판 사례 요약",
-                    status=rng.choice(["종결", "진행중", "무혐의", "확정", None]),
+                    summary=f"(더미) {polarity} 평판 사례 요약 — {category}",
+                    status=rng.choice(["종결", "진행중", "무혐의", "확정", None]) if polarity == "부정" else None,
                     verified_yn=verified,
                     source_id=src_c.source_id,
                 )
             )
 
         # ---------------- 업적 1~4건
-        for _ in range(rng.randint(1, 4)):
+        for category, description, metric in rng.sample(ACHIEVEMENTS, k=rng.randint(1, 4)):
+            start = rng.randint(TODAY.year - 12, TODAY.year - 2)
             session.add(
                 Achievement(
                     person_id=person.person_id,
-                    category=rng.choice(["경영 성과", "전문분야 성과", "이사회 기여"]),
-                    period=f"{rng.randint(TODAY.year - 12, TODAY.year - 1)}~{rng.randint(TODAY.year - 1, TODAY.year)}",
-                    description="(더미) 검증 가능한 성과 기술",
-                    quantitative_metric=rng.choice(
-                        ["영업이익률 4%→9%", "해외 매출 비중 12%→28%", "내부통제 지적사항 0건", None]
-                    ),
+                    category=category,
+                    period=f"{start}~{min(TODAY.year, start + rng.randint(1, 4))}",
+                    description=description,
+                    quantitative_metric=metric,
                     source_id=rng.choice([src_a.source_id, src_c.source_id]),
                 )
             )
 
-        # ---------------- 스크리닝 판정 (2단계 룰엔진 전, 상태 다양성 확보용 더미)
-        roll = rng.random()
-        if roll < 0.08:
-            verdicts = [(rng.choice(["R-01", "R-02", "R-06"]), C.SCREEN_FAIL, "(더미) 결격 가능 사유")]
-        elif roll < 0.33:
-            verdicts = [(rng.choice(["R-03", "R-04", "R-05"]), C.SCREEN_WARN, "(더미) 확인 필요 사유")]
-        else:
-            verdicts = [("R-01", C.SCREEN_PASS, None)]
-        for rule_id, result, reason in verdicts:
+        # ---------------- 출처 충돌: 공시(A)와 언론(C)의 직위가 다름 (PRD F-05-3)
+        session.flush()
+        if i % 10 == 3 and current_pos is not None:
+            alt_title = rng.choice([t for lv in TITLES_BY_LEVEL.values() for t in lv if t != current_pos.title])
             session.add(
-                ScreeningResult(
+                FieldConflict(
                     person_id=person.person_id,
-                    rule_id=rule_id,
-                    result=result,
-                    reason=reason,
+                    entity="position",
+                    entity_id=current_pos.position_id,
+                    field="title",
+                    adopted_value=current_pos.title,
+                    adopted_source_id=src_a.source_id,
+                    alt_value=alt_title,
+                    alt_source_id=src_c.source_id,
                 )
             )
 
@@ -389,8 +470,8 @@ def run(reset: bool = False) -> None:
     rng = random.Random(SEED)
     init_db(drop=reset)
 
-    # 코드·설정은 먼저 커밋한다. 인물 시드가 CodeMaster 를 별도 세션으로 조회하므로
-    # 같은 트랜잭션 안에 두면 아직 커밋되지 않은 코드를 못 보고 실패한다.
+    # 코드·설정은 먼저 커밋한다. 인물 시드가 CodeMaster·AppSetting 을 별도 세션으로 조회하므로
+    # 같은 트랜잭션 안에 두면 아직 커밋되지 않은 값을 못 보고 실패한다.
     with session_scope() as s:
         n_codes = CODES.seed_codes(s)
         n_settings = settings.seed_defaults(s)
@@ -404,11 +485,20 @@ def run(reset: bool = False) -> None:
     with session_scope() as s:
         _seed_pools(s, rng)
 
+    stats = None
+    if n_people:
+        # 전문분야·스크리닝·적합도는 운영과 같은 엔진으로 산출한다
+        from batch.run import run as run_batch
+
+        stats = run_batch("analyze")
+
     print("=" * 60)
     print("더미데이터 생성 완료 (합성 데이터 — 실존 인물 아님)")
     print(f"  CodeMaster : {n_codes}건 추가")
     print(f"  AppSetting : {n_settings}건 추가")
     print(f"  Person     : {n_people}명 추가")
+    if stats:
+        print(f"  분석       : {stats}")
     print("=" * 60)
     print("로그인 계정 (모의 로그인):")
     print("  staff@example.com / head@example.com / legal@example.com")

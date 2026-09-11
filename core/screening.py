@@ -102,13 +102,17 @@ def _norm(name: str | None) -> str:
 
 
 def _matches_any(org: str | None, names: Iterable[str]) -> str | None:
-    """기관명이 목록 중 하나와 일치하거나 그 이름을 포함하면 해당 이름을 반환."""
+    """기관명이 목록 중 하나와 (정규화 후) 정확히 일치하면 해당 이름을 반환.
+
+    부분 포함으로 비교하지 않는다. '가상홀딩스재단'이 '가상홀딩스'를 포함한다는 이유로
+    자사 재직으로 오판하면 무관한 사람을 결격 가능으로 표시하게 된다.
+    명칭 변형은 관리자 설정 목록에 모두 등록하는 방식으로 대응한다.
+    """
     o = _norm(org)
     if not o:
         return None
     for n in names:
-        nn = _norm(n)
-        if nn and (o == nn or nn in o):
+        if o == _norm(n):
             return n
     return None
 
