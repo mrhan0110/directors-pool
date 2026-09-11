@@ -18,7 +18,8 @@
 
 ## ▶ 다음 작업
 
-**2-4. F 적합도 점수** (§F). `core/scoring.py`: 순수함수 `base_components(data, ctx)`(스킬갭·경력·가용성·리스크) → PersonScore 저장(`store/score_all`), 검색용 SQL 식 `expertise_match_expr(codes, weight)`, FIT 정렬을 `core/search.py _apply_sort`에 연결, SearchRow에 score·근거요약 추가. 테스트 `tests/test_scoring.py`.
+**2-5. 시드 재작성 + 배치 실행기**. `data/seed.py`(키워드 포함 담당업무·업적, 자사/계열/대주주/장기재직/형사판결/FieldConflict 케이스, 가짜 ScreeningResult 제거), `batch/run.py`(`analyze()` = classify_all → evaluate_all → score_all, 시작·종료를 AuditLog entity=`batch`로 기록), seed 마지막에 `analyze()` 호출, `tests/test_batch.py`(분석 후 정합성).
+- 2-4 메모: 점수 API = `SC.Weights/ScoreContext.load`, `base_score`, `store/score_all/get/fit_score/breakdowns_in`, SQL `fit_expr(f)`, 표시 `display()/describe()`, 상시 문구 `SC.DISCLAIMER`. SearchRow에 `fit_score`(None=미산출), `fit_basis` 추가. **정렬: 결격만 하단 분리(🟡는 분리 안 함)**, 정렬 끝에 person_id로 안정 정렬.
 - 2-3 메모: 전문분야 API = `EXP.classify_evidence/evidence_from_detail/classify/store/classify_all`, `confirm/set_primary/remove/history_of`, 출력 가드 `EXP.displayable(expertises, sources)` — **상세·비교·리포트 화면은 반드시 이 가드를 거칠 것**. 현 seed의 duties가 "(더미) 주요 담당 업무"라 분류 근거가 빈약 → 2-5에서 키워드 포함 담당업무 문구로 교체.
 - 2-2 메모: 스크리닝 API = `OrgContext.load()`, `evaluate_input/evaluate/evaluate_and_store/evaluate_all`, `set_override`, `effective`, `worst`. 현 더미데이터상 R-01·R-02·R-05 전원 pass → **2-5 시드에 자사·계열사·대주주·장기재직·`형사 판결` 케이스 추가 필요**.
 
@@ -29,7 +30,7 @@
 - [x] 2-1 모델·설정 확장 (신규 테이블/컬럼, AppSetting 키, SCREEN_INFO) — §M
 - [x] 2-2 E 스크리닝 룰엔진 R-01~R-08 (`core/screening.py`) — §E
 - [x] 2-3 D 전문분야 자동 분류 (`core/expertise_rules.py`, `core/expertise.py`) — §D
-- [ ] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F
+- [x] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F
 - [ ] 2-5 시드 재작성: 엔진으로 스크리닝·분류·점수 산출, 자사/충돌/수동검수 케이스 포함 + `batch/run.py`
 - [ ] 2-6 A 검색 core+화면: 건수 배지, 칩 해제, 프리셋, 최근 인원수 사용자별 저장, 페이지네이션 — §A
 - [ ] 2-7 B 결과 목록: 전체 컬럼, 행 선택→상세/POOL 추가/비교, XLSX 내보내기 — §B
@@ -72,7 +73,7 @@
 
 ### §F 적합도
 - 저장: PersonScore.base_score = 스킬갭(20) + 경력수준(15) + 가용성(15) − 리스크(10). 배치에서 산출
-- 검색 시 SQL로 전문분야 매칭(40) = 가중치 × (선택 전문분야 중 보유 수 / 선택 수). 미선택이면 `org.board_skill_gaps` 기준
+- 검색 시 SQL로 전문분야 매칭(40) = 가중치 × (선택 전문분야 중 보유 수 / 선택 수). **미선택이면 전원 0**(스킬갭과 이중계산 방지 — 2-4에서 변경)
 - FIT 정렬 = base + 매칭식, SQL ORDER BY + LIMIT 유지(F-09-5-1). 결격 하단 분리는 그대로
 - 미확인 평판은 리스크에 미반영. 화면 상시 문구 `scoring.DISCLAIMER`
 

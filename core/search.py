@@ -17,6 +17,7 @@ from sqlalchemy import Select, case, exists, func, or_, select
 
 from core import constants as C
 from core import codes as CODES
+from core import scoring
 from core import settings
 from data.models import (
     Directorship,
@@ -44,6 +45,8 @@ class SearchRow:
     updated_at: datetime
     expertise_labels: list[str] = field(default_factory=list)
     directorship_summary: str = ""
+    fit_score: float | None = None  # None = 미산출 (PRD F-06)
+    fit_basis: str = ""             # 점수 근거 요약 (PRD §6.2)
 
 
 @dataclass
@@ -247,21 +250,24 @@ def _apply_filters(stmt: Select, f: dict[str, Any], today: date | None = None) -
     return stmt
 
 
-def _apply_sort(stmt: Select, sort_code: str | None) -> Select:
-    """결격 후보는 항상 하단. 그 안에서 선택한 정렬을 적용한다 (PRD F-06)."""
-    screen_rank = case(
-        (_screening_case() == C.SCREEN_FAIL, 2),
-        (_screening_case() == C.SCREEN_WARN, 1),
-        else_=0,
-    )
-    stmt = stmt.order_by(screen_rank)
+def _apply_sort(stmt: Select, sort_code: str | None, fit=None) -> Select:
+    """결격 후보만 항상 하단으로 분리하고, 그 안에서 선택한 정렬을 적용한다 (PRD F-06).
+
+    확인 필요(🟡)는 분리하지 않는다 — 리스크는 이미 적합도 감점에 반영되어 있다.
+    마지막에 person_id 를 붙여 정렬을 안정적으로 만든다(페이지 간 중복·누락 방지).
+    """
+    fail_rank = case((_screening_case() == C.SCREEN_FAIL, 1), else_=0)
+    stmt = stmt.order_by(fail_rank)
 
     if sort_code == "FEWEST":
         return stmt.order_by(_concurrent_count_sq().asc(), Person.person_id)
     if sort_code == "AGE_ASC":
         return stmt.order_by(Person.birth_year.desc().nulls_last(), Person.person_id)
-    # FIT(적합도)은 2단계 구현. 그때까지 데이터 최신순으로 대체한다.
-    return stmt.order_by(Person.updated_at.desc(), Person.person_id)
+    if sort_code == "FRESH":
+        return stmt.order_by(Person.updated_at.desc(), Person.person_id)
+    # FIT: 기본 점수(PersonScore) + 전문분야 매칭도(검색 조건 기준)
+    fit = fit if fit is not None else scoring.fit_expr({})
+    return stmt.order_by(fit.desc(), Person.person_id)
 
 
 # ------------------------------------------------------------------ 실행
@@ -281,6 +287,7 @@ def search(
     limit, capped_by = resolve_limit(limit_code, role)
     total = count_matches(f)
     sort_code = f.get("sort") or "FIT"
+    fit = scoring.fit_expr(f)
 
     stmt = select(
         Person.person_id,
@@ -291,9 +298,10 @@ def search(
         Person.updated_at,
         _concurrent_count_sq().label("concurrent_count"),
         _screening_case().label("screening"),
+        fit.label("fit_score"),
     )
     stmt = _apply_filters(stmt, f)
-    stmt = _apply_sort(stmt, sort_code)
+    stmt = _apply_sort(stmt, sort_code, fit)
     stmt = stmt.limit(limit).offset(offset)
 
     today = date.today()
@@ -304,6 +312,14 @@ def search(
         current_pos = _current_positions(s, ids)
         exp_labels = _expertise_labels(s, ids)
         dir_summary = _directorship_summary(s, ids)
+        scores = scoring.breakdowns_in(s, ids)
+
+    def _fit(r) -> tuple[float | None, str]:
+        sc = scores.get(r.person_id)
+        if sc is None:
+            return None, ""
+        value = float(r.fit_score or 0.0)
+        return round(value, 1), scoring.describe(sc["breakdown"], value - sc["base"])
 
     rows = [
         SearchRow(
@@ -319,6 +335,8 @@ def search(
             updated_at=r.updated_at,
             expertise_labels=exp_labels.get(r.person_id, []),
             directorship_summary=dir_summary.get(r.person_id, "없음"),
+            fit_score=_fit(r)[0],
+            fit_basis=_fit(r)[1],
         )
         for r in records
     ]
