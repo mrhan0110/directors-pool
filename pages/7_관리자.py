@@ -7,11 +7,12 @@ import streamlit as st
 from core import codes as CODES, constants as C, settings
 from core.audit import history_of, log_change
 from core.guard import confidential_notice, require
+from core.ui.components import page_header
 from data.repository import list_users, recent_access_logs, source_integrity_report
 
 user = require("admin")
 
-st.title("관리자")
+page_header("관리자")
 confidential_notice()
 
 tab_codes, tab_settings, tab_users, tab_logs, tab_integrity = st.tabs(

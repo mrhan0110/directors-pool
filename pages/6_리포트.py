@@ -14,13 +14,14 @@ from core import constants as C
 from core import pools, state
 from core.audit import log_access
 from core.guard import confidential_notice, require
+from core.ui.components import page_header
 from data.repository import get_person_detail, list_person_options
 from reports.builder import ExportBlockedError, build_candidate_pdf, build_pool_pdf, check_export
 
 user = require("report")
 viewer_label = f"{user.display_name} ({user.email})"
 
-st.title("리포트")
+page_header("리포트")
 confidential_notice()
 
 tab_person, tab_pool = st.tabs(["사추위 보고용 개인 프로파일", "POOL 리포트"])

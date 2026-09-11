@@ -47,52 +47,55 @@ bootstrap()
 # ------------------------------------------------------------------ 로그인 화면
 
 def render_login() -> None:
-    st.title("⚖️ 독립이사 후보자 POOL")
-    st.caption("이사회 사무국 전용 · 대외비")
+    # 단순·명확이 목표다(3단계 §C S-00) — 좁은 중앙 열 하나에 로그인과 안내만 둔다.
+    _, mid, _ = st.columns([1, 1.4, 1])
+    with mid:
+        st.markdown('<div class="pool-system-caption">⚖️ 이사회 사무국 전용 · 대외비</div>', unsafe_allow_html=True)
+        st.title("독립이사 후보자 POOL")
 
-    provider = get_provider()
-    if provider.name == "mock":
-        st.warning(
-            "**개발 모드(모의 로그인)** 입니다. 운영 배포 전 SSO(OIDC) 연동으로 교체해야 합니다. "
-            "(PRD F-09-10)",
-            icon="⚠️",
-        )
+        provider = get_provider()
+        if provider.name == "mock":
+            st.warning(
+                "**개발 모드(모의 로그인)** 입니다. 운영 배포 전 SSO(OIDC) 연동으로 교체해야 합니다. "
+                "(PRD F-09-10)",
+                icon="⚠️",
+            )
 
-    try:
-        candidates = provider.list_selectable_users()
-    except Exception:
-        candidates = []
+        try:
+            candidates = provider.list_selectable_users()
+        except Exception:
+            candidates = []
 
-    if not candidates:
-        st.error("로그인 가능한 계정이 없습니다.")
-        st.code("python -m data.seed", language="bash")
-        st.caption("위 명령으로 더미데이터와 계정을 생성한 뒤 새로고침하세요.")
-        return
-
-    with st.form("login"):
-        labels = {f"{u.display_name} · {u.role} ({u.email})": u.email for u in candidates}
-        picked = st.selectbox("계정 선택", list(labels.keys()))
-        submitted = st.form_submit_button("로그인", type="primary")
-
-    if submitted:
-        user = provider.authenticate(labels[picked])
-        if user is None:
-            st.error("로그인할 수 없는 계정입니다. 접근 권한이 만료되었을 수 있습니다.")
+        if not candidates:
+            st.error("로그인 가능한 계정이 없습니다.")
+            st.code("python -m data.seed", language="bash")
+            st.caption("위 명령으로 더미데이터와 계정을 생성한 뒤 새로고침하세요.")
             return
-        state.clear_user_scoped()
-        state.put(state.K_USER, user)
-        state.touch()
-        audit.log_access(user.user_id, C.ACT_LOGIN, page="login")
-        st.rerun()
 
-    with st.expander("이 시스템에 대하여"):
-        st.markdown(
-            """
-            - 공개된 신뢰성 높은 자료(DART·기관 공식 정보·언론)만 사용하며, 모든 항목에 출처를 표기합니다.
-            - 화면의 정보는 **참고자료**이며, 최종 적격성은 법무 검토로 확정됩니다.
-            - 모든 조회·출력·공유 행위는 감사로그에 기록됩니다.
-            """
-        )
+        with st.form("login"):
+            labels = {f"{u.display_name} · {u.role} ({u.email})": u.email for u in candidates}
+            picked = st.selectbox("계정 선택", list(labels.keys()))
+            submitted = st.form_submit_button("로그인", type="primary", use_container_width=True)
+
+        if submitted:
+            user = provider.authenticate(labels[picked])
+            if user is None:
+                st.error("로그인할 수 없는 계정입니다. 접근 권한이 만료되었을 수 있습니다.")
+                return
+            state.clear_user_scoped()
+            state.put(state.K_USER, user)
+            state.touch()
+            audit.log_access(user.user_id, C.ACT_LOGIN, page="login")
+            st.rerun()
+
+        with st.expander("이 시스템에 대하여"):
+            st.markdown(
+                """
+                - 공개된 신뢰성 높은 자료(DART·기관 공식 정보·언론)만 사용하며, 모든 항목에 출처를 표기합니다.
+                - 화면의 정보는 **참고자료**이며, 최종 적격성은 법무 검토로 확정됩니다.
+                - 모든 조회·출력·공유 행위는 감사로그에 기록됩니다.
+                """
+            )
 
 
 # ------------------------------------------------------------------ 사이드바

@@ -13,11 +13,17 @@ import streamlit as st
 from core import constants as C
 from core import pools, settings, sharing, state
 from core.guard import confidential_notice, require
+from core.ui.components import page_header
 
 user = require("share")
 
-st.title("공유 관리")
+page_header("공유 관리")
 confidential_notice()
+
+_STATUS_ICON = {
+    sharing.STATUS_ACTIVE: "🟢", sharing.STATUS_SOON: "🟡",
+    sharing.STATUS_EXPIRED: "⚪", sharing.STATUS_REVOKED: "🔴",
+}
 
 default_days = settings.get_int(C.SET_SHARE_LINK_DEFAULT_DAYS)
 max_days = settings.get_int(C.SET_SHARE_LINK_MAX_DAYS)
@@ -80,7 +86,7 @@ else:
         [
             {
                 "ID": lk.share_id,
-                "상태": statuses[lk.share_id],
+                "상태": f"{_STATUS_ICON.get(statuses[lk.share_id], '')} {statuses[lk.share_id]}",
                 "POOL": pool_names.get(lk.pool_id, lk.pool_id),
                 "수신자": lk.recipient_email,
                 "목적": lk.purpose,
