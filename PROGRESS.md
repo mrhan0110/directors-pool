@@ -18,12 +18,8 @@
 
 ## ▶ 다음 작업
 
-**2-11 검증부터 재개** — 2-11 코드는 ①~⑧ 전부 작성·커밋(WIP)했으나 **테스트를 아직 한 번도 돌리지 않았다**.
-1. `.\.venv\Scripts\python.exe -m pytest -q -p no:logging` 실행 → 실패 수정
-2. 통과하면 PROGRESS에서 2-11 체크 후 `2-11 인증·공유 검증` 커밋 → 2-12(G 수집)로
-- 2-11에서 바뀐 파일: core/guard.py(refresh_user·스탬프), core/state.py(K_SELECTED_POOL·K_PENDING_SHARE·K_ISSUED_LINK), core/auth.py(refresh_user), core/sharing.py, core/access.py, app.py(?share= 처리), pages/0·2·4·8, data/seed.py(_seed_share), tests/helpers.py, tests/test_sharing.py, tests/test_viewer_pages.py, tests/test_pages_render.py·test_pages_guard.py(user_for로 교체)
-- 테스트 실패 시 의심 지점: test_viewer_pages의 `at.selectbox(key=...).options` 개수 비교, 대시보드 뷰어 분기의 `until[p.pool_id]`, seed `_seed_share`가 conftest 시드에서 정상 발급되는지
-- 개발 DB는 스키마 변경 없음. 시드 공유 링크를 보려면 `seed.run(reset=True)`로 재생성
+**2-12 G 수집부터 시작** (§G). `batch/run.py` CLI에 `collect` 서브커맨드 추가, `core/ingest.py`(적재 파이프라인 — 실제/더미 공용), `collectors/`에 DART OpenAPI 클라이언트·뉴스·웹 크롤러(더미 모드 우선: 실제와 같은 파이프라인을 통과하는 가짜 CollectedFact 생성), 인물 식별(이름+생년+소속이력 겹침 점수, `identity.auto_merge_threshold` 미만이면 ReviewQueue로 — 자동 결합 금지), 출처 충돌 시 상위 tier 채택 + `FieldConflict` 기록(단 `manually_edited=True` 필드는 덮어쓰지 않고 ReviewQueue), 스냅샷 저장, URL 점검(`url-check` 서브커맨드), 보관기간 경과 시 파기(`purge` 서브커맨드). 소스 화이트리스트(§불변규칙 7 — 익명 커뮤니티·SNS·개인 블로그·위키 차단)를 수집 단계에서 강제할 것.
+- 완료 후: 테스트 통과 → 체크 → `2-12 G 수집` 커밋 → 2-13(관리자 화면)으로.
 
 **(참고) 2-10 커밋 → 2-11 J 인증·공유** (§J).
 - 2-10(검증 완료, 커밋 전이면 먼저 커밋): reports/pdf.py reports/builder.py pages/6_리포트.py core/state.py tests/test_pdf.py tests/test_pages_render.py PROGRESS.md. 샘플 PDF 육안 확인 완료(한글·워터마크·각주·2면). POOL PDF는 리포트 화면 POOL 탭에서 제공(POOL 화면 버튼 없음).
@@ -53,7 +49,7 @@
 - [x] 2-8 C 상세: 전 섹션, 출처 충돌(대체 정보), 구 정보 배지, 평판 정량, 18개 고려사항 체크리스트 — §C
 - [x] 2-9 H POOL 관리(CRUD·상태 전이·사유·타임라인) + 검수(3분할·승인/수정/삭제·ReviewLog·충돌 알림) — §H
 - [x] 2-10 I 리포트: 사추위 2페이지 PDF(부록 A·B, 워터마크) + POOL PDF/XLSX — §I
-- [ ] 2-11 J 인증·공유: OIDC 인터페이스, 외부뷰어 POOL 범위 제한, 공유 링크 발급/회수/검증, 로그 — §J
+- [x] 2-11 J 인증·공유: OIDC 인터페이스, 외부뷰어 POOL 범위 제한, 공유 링크 발급/회수/검증, 로그 — §J
 - [ ] 2-12 G 수집: 더미/실제 모드, DART 클라이언트, 뉴스·웹, 인물 식별(동명이인 큐), 스냅샷, URL 점검, 보관기간 파기 — §G
 - [ ] 2-13 관리자: 코드 추가·수정·이력, 설정값 수정·이력 (F-01-7)
 - [ ] 2-14 DoD 검증: 커버리지 ≥70%, §13 인수기준 1~9·15~17, 100명 조회 3초, README·CLAUDE.md 갱신
@@ -139,3 +135,4 @@
 
 - 2026-09-11: 1단계 마무리(렌더 테스트 수정, README), git 초기화, 이어하기 장치 구축
 - 2026-09-11: 2-1 ~ 2-10 완료·커밋(테스트 269개 통과). 2-11 코드 작성 후 사용자 요청으로 중단 — WIP 커밋, 테스트 미실행
+- 2026-09-11: 세션 재개. 개발 환경에 git·`.venv`가 없어 새로 구축(winget으로 git 설치, `python -m venv .venv` + requirements 설치). 우발적으로 삭제돼 있던 `.streamlit/config.toml`·`secrets.toml.example`(CORS/XSRF 설정 포함, 2-11 작업과 무관)을 `git checkout --`으로 복구. 2-11 WIP 전체 테스트 통과 확인(exit code 0) → 2-11 완료 처리, 2-12(G 수집)로 진행
