@@ -5,6 +5,7 @@ python-dotenv>=1.0
 pytest>=8.0
 pytest-cov>=5.0
 requests>=2.31
+beautifulsoup4>=4.12  # 기업 홈페이지 일반 텍스트 추출 (collectors/web.py, PRD F-05 소스 등급 B)
 openpyxl>=3.1       # XLSX 내보내기 (PRD F-02-3)
 reportlab>=4.0      # 사추위 보고용 PDF (PRD 부록 A)
 altair>=5,<7        # 경력 타임라인·분포 차트 (PRD 3단계 §E). streamlit 의 간접 의존성이지만 직접 import 하므로 명시

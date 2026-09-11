@@ -7,8 +7,13 @@ core.ingest 의 인물 식별·사실 적재 API 로 연결한다. 더미 모드
 
 from __future__ import annotations
 
+from datetime import date
+
+from sqlalchemy import select
+
 from core import constants as C
 from core import ingest, settings
+from collectors.base import BlockedSourceError
 from collectors.dart import (
     DartCollector,
     REPRT_CODE_ANNUAL,
@@ -19,6 +24,9 @@ from collectors.dart import (
     parse_dart_date,
     row_to_fact,
 )
+from collectors.news import NewsCollector, classify_polarity, item_to_fact
+from data.models import Reputation, Source
+from data.session import session_scope
 
 _STAT_KEYS = (
     "rows", "created_person", "matched_person", "queued_identity", "blocked",
@@ -112,3 +120,64 @@ def collect_configured_dart_targets(bsns_year: str, reprt_code: str = REPRT_CODE
         for k, v in result.items():
             total[k] += v
     return total
+
+
+# ------------------------------------------------------------------ 뉴스 → 평판(Reputation)
+
+def _reputation_exists_for_url(s, person_id: int, url: str) -> bool:
+    """이미 수집한 기사인지 확인한다(재수집 시 중복 적재 방지). 기사 1건 = 사실 1건이라
+    core.ingest.ingest_fact 의 '자연키로 갱신' 방식이 아니라 URL 로 직접 중복을 막는다."""
+    return s.execute(
+        select(Reputation.reputation_id)
+        .join(Source, Source.source_id == Reputation.source_id)
+        .where(Reputation.person_id == person_id, Source.url == url)
+    ).first() is not None
+
+
+def ingest_news_for_person(person_id: int, person_name: str, context: str | None = None, display: int = 20) -> dict[str, int]:
+    """특정 인물의 이름(+ 맥락어, 있으면 정확도 향상)으로 뉴스를 검색해 평판으로 적재한다.
+
+    ⚠️ 동명이인 위험: 뉴스 검색은 이름 문자열만으로 걸러지므로, 흔한 이름이면 전혀 다른
+    사람의 기사가 섞여 들어올 수 있다. 이 함수는 동명이인을 구분하지 않는다 — 전부
+    verified_yn=False 로 적재되며, 검수(F-08) 화면에서 사람이 걸러내야 검수완료가 된다.
+    가능하면 `context`(현재 소속 등)를 함께 넘겨 검색 정확도를 높인다.
+    """
+    collector = NewsCollector()
+    query = f"{person_name} {context}".strip() if context else person_name
+    items = collector.search(query, display=display, sort="date")
+
+    stats = {"items": len(items), "created": 0, "skipped_duplicate": 0, "skipped_invalid": 0}
+    for item in items:
+        url = (item.get("originallink") or item.get("link") or "").strip()
+        if not url:
+            stats["skipped_invalid"] += 1
+            continue
+        try:
+            fact = item_to_fact(item, query)
+        except BlockedSourceError:
+            stats["skipped_invalid"] += 1
+            continue
+
+        with session_scope() as s:
+            if _reputation_exists_for_url(s, person_id, fact.url):
+                stats["skipped_duplicate"] += 1
+                continue
+            published = date.fromisoformat(fact.published_date) if fact.published_date else None
+            src = Source(
+                publisher=fact.publisher, doc_title=fact.doc_title, published_date=published,
+                url=fact.url, source_tier=fact.source_tier, quote_snippet=fact.quote_snippet,
+            )
+            s.add(src)
+            s.flush()
+            s.add(Reputation(
+                person_id=person_id,
+                polarity=classify_polarity(f"{fact.doc_title} {fact.quote_snippet}"),
+                category="언론 보도",
+                event_date=published,
+                summary=fact.doc_title,
+                status=None,
+                verified_yn=False,
+                source_id=src.source_id,
+            ))
+            stats["created"] += 1
+    return stats

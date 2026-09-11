@@ -37,9 +37,21 @@
      (psycopg[binary] 분리), `deploy/nginx.conf.example`(HTTPS 템플릿, F-09-19).
      **이 환경에 Docker 가 없어 실제 빌드는 못 해봄 — YAML 문법만 검증(pyyaml).** 다음 세션에서
      Docker 가 있는 환경이면 `docker compose up -d --build` 로 먼저 빌드 확인할 것.
-   - [ ] 뉴스·홈페이지 수집기는 PRD §14-2(뉴스 소스 계약)가 결정되지 않아 보류
-   - [ ] DART 키 발급 후 실제 응답으로 `tests/test_dart_collector.py`의 파서 가정(날짜 형식 등)
-     재검증 필요 — 사용자에게 opendart.fss.or.kr 무료 발급 안내함(2026-09-11 세션에서 미보유 확인)
+   - [x] 뉴스 수집기(`collectors/news.py`): PRD §14-2(뉴스 소스 계약)가 미결이라, 무료·즉시 발급
+     가능한 **네이버 뉴스검색 오픈API**로 우선 연동(사용자 승인함). 공식 swagger 명세(GitHub
+     naver/naver-openapi-guide)로 요청/헤더 확인. `collectors/pipeline.ingest_news_for_person`
+     이 평판(Reputation, verified_yn=False)으로 적재 — URL 기준 중복 방지, 보수적 키워드 기반
+     논조 추정(부정 신호 없으면 전부 중립). ⚠ 동명이인 위험은 구조적으로 해소 안 됨(이름 문자열
+     검색이라 흔한 이름이면 다른 사람 기사가 섞일 수 있음 — 검수에서 사람이 걸러야 함, 주석·README
+     에 명시). API 키 없어 실제 응답 미검증(테스트 26건은 monkeypatch).
+   - [x] 홈페이지 수집기(`collectors/web.py`): 사용자 요청대로 **범용 베이스워크만** 구현
+     (robots.txt 확인 → 제목·메타설명·본문 <p> 텍스트 추출, beautifulsoup4 신규 의존성).
+     회사별 정밀 추출(경영진 표 등)은 아직 없음 — 사용자도 정확도 낮을 수 있음을 인지하고 승인.
+   - [ ] DART/네이버 키 발급 후 실제 응답으로 파서 가정(날짜 형식 등) 재검증 필요 — 사용자에게
+     opendart.fss.or.kr(DART)/developers.naver.com(네이버) 무료 발급 안내함
+   - [ ] `batch/run.py`에 뉴스 수집 CLI 서브커맨드는 아직 안 만듦(`ingest_news_for_person`은
+     라이브러리 함수로만 존재) — 전량 자동화보다 후보 선별 호출이 동명이인 위험상 안전하다고 판단,
+     필요시 요청 대기
    - [ ] SSO/OIDC 실연동, 법무·개인정보 결정(PRD §14) — 사용자 쪽 결정 필요, 코드로 선점 불가
 
 ### 3단계 작업 단위 체크리스트

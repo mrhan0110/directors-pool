@@ -9,11 +9,13 @@
 > 스타일을 공유한다. 4단계 검토에서 발견한 버그·PRD 미충족 항목은 `REVIEW_보고서.md`에 정리했고,
 > 사용자 승인 대기 중이다.
 >
-> **실사용 전환 트랙(4단계 승인과 별도로 진행 중)**: DART 실제 수집기(`collectors/dart.py`,
-> `collectors/pipeline.py`)를 DART 개발가이드 공식 명세로 구현했다 — 단, **API 키가 없어 실제 응답으로
-> 검증하지 못했다**(문서 스펙 + 방어적 파싱만으로 작성). Docker 패키징(`Dockerfile`, `docker-compose.yml`)도
-> 준비했지만 **이 환경에 Docker 가 없어 실제 빌드는 못 해봤다** — YAML 문법만 검증했다. 뉴스·홈페이지
-> 수집기는 PRD §14-2(뉴스 소스 계약)가 정해지지 않아 보류 상태다.
+> **실사용 전환 트랙(4단계 승인과 별도로 진행 중)**: DART 실제 수집기(`collectors/dart.py`)를 DART
+> 개발가이드 공식 명세로, 뉴스 수집기(`collectors/news.py`)를 네이버 뉴스검색 오픈API(무료, PRD
+> §14-2 계약 확정 전 임시 대안)로 구현했다 — 단, **API 키가 없어 둘 다 실제 응답으로 검증하지
+> 못했다**(공식 문서 스펙 + 방어적 파싱만으로 작성). 기업 홈페이지 수집(`collectors/web.py`)은 범용
+> 베이스워크(robots.txt 확인 + 제목·메타설명·본문 일반 추출)만 있다 — 사이트마다 구조가 달라 특정
+> 회사를 정확히 뽑아내려면 회사별 파서가 추가로 필요하다. Docker 패키징(`Dockerfile`,
+> `docker-compose.yml`)도 준비했지만 **이 환경에 Docker 가 없어 실제 빌드는 못 해봤다**.
 
 > ⚠️ **실명 데이터 금지.** 개발·테스트는 `data/seed.py`가 만드는 합성 더미데이터(`가상001 …`, `example.com` URL)만 사용한다.
 > Streamlit Community Cloud 등 퍼블릭 환경에 실명 데이터를 배포하지 않는다 (PRD §6.9 (4)).
@@ -35,13 +37,17 @@ copy .env.example .env                # 필요 시 값 수정. .env 는 커밋 �
 | `DATA_MODE` | `dummy` | `dummy` \| `live`. 기본은 더미 모드 |
 | `AUTH_PROVIDER` | `mock` | `mock`(역할 선택 모의 로그인) \| `oidc`(이후 단계) |
 | `SNAPSHOT_DIR` | `./storage/snapshots` | 원문 스냅샷 경로 (F-05-6) |
-| `DART_API_KEY`, `NEWS_API_KEY` | 비움 | 실제 수집기용(키 없으면 `collectors/*.py`는 비활성 상태로 동작). 코드에 하드코딩 금지. DART 키는 [opendart.fss.or.kr](https://opendart.fss.or.kr)에서 무료·즉시 발급 |
+| `DART_API_KEY` | 비움 | DART 실제 수집기용. 코드에 하드코딩 금지. [opendart.fss.or.kr](https://opendart.fss.or.kr)에서 무료·즉시 발급 |
 | `DART_BSNS_YEAR` | 작년 | DART 임원현황 조회 사업연도(4자리). 정기보고서는 익년에 공시되므로 기본은 작년 |
+| `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | 비움 | 뉴스 수집기(네이버 뉴스검색 오픈API)용. [developers.naver.com](https://developers.naver.com)에서 무료·즉시 발급 |
 | `SEED_PERSON_COUNT` | `200` | 시드 후보자 수 (테스트는 25) |
 
 `DATA_MODE=live`로 실제 DART 수집을 돌리려면 위 `DART_API_KEY`에 더해, 관리자 화면(또는
 `AppSetting` 테이블)의 `collect.dart_target_companies` 값을 `고유번호:회사명` 쌍(콤마로 여러 개)으로
 채워야 한다 — 초기 수집 대상 회사 범위는 PRD §14-1 결정 대기 사항이라 코드에 기본값을 넣지 않았다.
+뉴스 수집(`collectors/pipeline.ingest_news_for_person`)은 아직 배치 CLI에 연결하지 않았다 — 후보
+1인 단위로 호출하는 라이브러리 함수로만 존재한다(동명이인 위험이 있어 전량 자동화보다 선별 호출이
+안전하다고 판단했다).
 
 ## 시드 데이터 생성
 
@@ -91,8 +97,9 @@ pytest tests/test_career.py::test_lookback_boundary_exactly_ten_years -v   # 단
 ```
 
 테스트는 임시 SQLite에 소량 더미데이터를 만들어 돌리므로 개발 DB를 건드리지 않는다 (`tests/conftest.py`).
-전체 테스트 300여 건이 통과하며, `core`·`data`·`batch`·`collectors` 코드 커버리지는 93%다
-(`collectors/*.py`의 실제 API 호출부만 0% — API 키가 없어 검증 불가, 의도된 상태).
+전체 테스트 370여 건이 통과하며, `core`·`data`·`batch`·`collectors` 코드 커버리지는 94%다
+(`collectors/*.py`도 `requests.get`을 monkeypatch 로 흉내 낸 응답으로 파싱·적재 로직은 검증했지만,
+실제 네트워크 호출 자체는 API 키가 없어 검증하지 못했다).
 
 ```powershell
 # 커버리지 리포트 (PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 이 pytest-cov 자동 등록도 막으므로 -p 로 명시한다)
@@ -125,7 +132,8 @@ pages/            Streamlit 화면 (0 대시보드 ~ 8 공유 관리). 모든 �
 core/             도메인 로직 (search, scoring, screening, expertise, career, ingest, auth, audit, state, settings, codes, guard, sharing, access, pools, review …)
 core/ui/          화면 표현 계층 — style.py(전역 CSS 1곳) · components.py(배지·팝오버·게이지·배너 등) · charts.py(Altair)
 data/             SQLAlchemy 모델 · repository · 세션 · 시드
-collectors/       DART · 뉴스 · 웹 수집기 (화이트리스트·robots.txt 가드는 동작, 실제 API 호출부는 키 없어 미구현)
+collectors/       DART(실제 API 연동, 키 없어 미검증) · 뉴스(네이버 뉴스검색, 키 없어 미검증) ·
+                  웹(범용 베이스워크만, 회사별 정밀 추출 없음) 수집기 + pipeline.py(core.ingest 연결)
 reports/          PDF/XLSX 출력 (개인 프로파일·POOL 요약, 워터마크·검수완료 게이트 적용)
 batch/            Streamlit 밖 배치 실행기(analyze/classify/screen/score/collect/url-check/purge)
 tests/            pytest (약 350건)
@@ -137,13 +145,19 @@ Dockerfile, docker-compose.yml, requirements-docker.txt   Docker 패키징(§8, 
 
 ## 알려진 제약
 
-- **DART 수집기는 API 키로 검증되지 않았다**: `collectors/dart.py`는 DART 개발가이드의 실제 API 명세
-  (요청 파라미터·응답 필드명)로 작성했고 단위테스트도 있지만, 개발 세션에 `DART_API_KEY`가 없어
-  **실제 응답으로는 한 번도 호출해보지 못했다.** 날짜·생년월 형식이 문서와 다르면 방어적으로 `None`을
-  반환하도록 만들어뒀지만, 키를 발급받으면 회사 1곳으로 먼저 `python -m batch.run collect`를 돌려
-  결과를 눈으로 확인하는 것을 권장한다.
-- **뉴스·기업 홈페이지 수집은 미구현**: `collectors/news.py`·`web.py`는 1단계 인터페이스만 있다.
-  뉴스는 소스 계약(PRD §14-2, 빅카인즈/상용 API/언론사 제휴 중 미정)이 필요해 보류했다.
+- **DART·뉴스 수집기는 API 키로 검증되지 않았다**: `collectors/dart.py`(DART 개발가이드)와
+  `collectors/news.py`(네이버 뉴스검색 오픈API 공식 swagger 명세)를 각각 실제 API 문서를 확인해
+  작성했고 단위테스트도 있지만, 개발 세션에 키가 없어 **실제 응답으로는 한 번도 호출해보지 못했다.**
+  날짜·필드 형식이 문서와 다르면 방어적으로 `None`을 반환하도록 만들어뒀지만, 키를 발급받으면
+  1건이라도 실제로 돌려서 결과를 눈으로 확인하는 것을 권장한다.
+- **뉴스 수집은 임시 대안이다**: PRD §14-2(뉴스 소스 계약: 빅카인즈/상용 API/언론사 제휴)가 아직
+  정해지지 않아, 무료·즉시 발급 가능한 네이버 뉴스검색으로 우선 연동했다. 계약이 정해지면 교체해야
+  한다. 또한 뉴스 검색은 이름 문자열만으로 걸러지므로 흔한 이름이면 동명이인 기사가 섞여 들어올 수
+  있다 — 전부 `verified_yn=False`로 적재되고 검수(F-08)에서 사람이 걸러내야 한다.
+- **기업 홈페이지 수집은 범용 베이스워크뿐이다**: `collectors/web.py`는 robots.txt 확인 후 제목·
+  메타설명·본문 문단을 일반적인 방식으로 뽑기만 한다. 회사마다 페이지 구조가 달라 "경영진 소개"
+  같은 특정 항목을 정확히 분리해내지 못하므로, 이 출력을 그대로 신뢰해 저장하면 안 되고 검수에서
+  반드시 사람이 확인해야 한다.
 - **Docker 이미지를 실제로 빌드해보지 못했다**: `Dockerfile`·`docker-compose.yml`을 준비했지만
   이 개발 환경에 Docker 가 설치돼 있지 않아 `docker build`/`docker compose up`을 실행해 검증하지
   못했다(YAML 문법만 확인). 처음 빌드할 때 결과를 확인해야 한다.
