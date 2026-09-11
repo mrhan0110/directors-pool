@@ -123,6 +123,27 @@ PAGE_PERMISSIONS: dict[str, tuple[str, ...]] = {
 # 다운로드는 외부뷰어에게 허용하지 않는다 (PRD F-09-12)
 DOWNLOAD_ALLOWED_ROLES = (C.ROLE_STAFF, C.ROLE_HEAD, C.ROLE_LEGAL, C.ROLE_ADMIN)
 
+# POOL 편집은 담당자·사무국장(·관리자). 법무는 조회와 검증 결과 입력만 한다 (PRD §3.1)
+POOL_EDIT_ROLES = (C.ROLE_STAFF, C.ROLE_HEAD, C.ROLE_ADMIN)
+
+
+def can_edit_pool(role: str | None) -> bool:
+    return role in POOL_EDIT_ROLES
+
+
+# 검수·고려사항 수기 확인 입력: 외부뷰어를 제외한 내부 역할
+REVIEW_ROLES = (C.ROLE_STAFF, C.ROLE_HEAD, C.ROLE_LEGAL, C.ROLE_ADMIN)
+# 결격·이해상충 수기 판정: 법무(·관리자) (PRD §3.1 '검증 결과 입력')
+SCREENING_OVERRIDE_ROLES = (C.ROLE_LEGAL, C.ROLE_ADMIN)
+
+
+def can_review(role: str | None) -> bool:
+    return role in REVIEW_ROLES
+
+
+def can_override_screening(role: str | None) -> bool:
+    return role in SCREENING_OVERRIDE_ROLES
+
 
 def can_access(role: str | None, page_key: str) -> bool:
     if role is None:

@@ -25,6 +25,7 @@ from data.models import (
     Expertise,
     Person,
     PersonIndustry,
+    PersonScore,
     Position,
     Reputation,
     ScreeningResult,
@@ -390,6 +391,21 @@ def search_ids(f: dict[str, Any], limit_code: str | None, role: str | None) -> l
     stmt = _apply_sort(stmt, f.get("sort") or "FIT", scoring.fit_expr(f))
     with session_scope() as s:
         return list(s.execute(stmt.limit(limit)).scalars())
+
+
+def search_ranked(f: dict[str, Any], limit_code: str | None, role: str | None) -> list[tuple[int, float | None]]:
+    """상위 N명의 (id, 적합도)를 순위대로. 적합도는 검색 조건의 전문분야 매칭도를 포함한다.
+
+    PersonScore 가 없는 후보의 적합도는 None('미산출')이다.
+    """
+    limit, _ = resolve_limit(limit_code, role)
+    fit = scoring.fit_expr(f)
+    has_score = exists().where(PersonScore.person_id == Person.person_id)
+    stmt = _apply_filters(select(Person.person_id, fit.label("fit"), has_score.label("has_score")), f)
+    stmt = _apply_sort(stmt, f.get("sort") or "FIT", fit)
+    with session_scope() as s:
+        rows = s.execute(stmt.limit(limit)).all()
+    return [(r.person_id, round(float(r.fit), 1) if r.has_score else None) for r in rows]
 
 
 STALE_DAYS = 183  # 데이터 최신성: 6개월 초과 시 흐리게 표시 (PRD §6.2)

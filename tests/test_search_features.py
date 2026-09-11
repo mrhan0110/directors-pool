@@ -88,6 +88,30 @@ def test_preset_requires_name():
         presets.save_preset(1, "   ", {}, None)
 
 
+# ------------------------------------------------------------------ 내보내기 대상·권한 (F-02-2, F-02-3)
+
+def test_search_ranked_matches_search_order_and_scores():
+    f = {"sort": "FIT"}
+    ranked = search.search_ranked(f, "N20", C.ROLE_STAFF)
+    assert [pid for pid, _ in ranked] == search.search_ids(f, "N20", C.ROLE_STAFF)
+    page = search.search(f, "N20", C.ROLE_STAFF)
+    assert [(r.person_id, r.fit_score) for r in page.rows] == ranked[: len(page.rows)]
+
+
+def test_search_ranked_respects_viewer_cap():
+    viewer_max = settings.get_int(C.SET_RESULT_LIMIT_VIEWER_MAX)
+    assert len(search.search_ranked({}, "NALL", C.ROLE_VIEWER)) <= viewer_max
+
+
+def test_pool_edit_roles():
+    from core.auth import can_edit_pool
+
+    assert can_edit_pool(C.ROLE_STAFF) and can_edit_pool(C.ROLE_HEAD) and can_edit_pool(C.ROLE_ADMIN)
+    assert not can_edit_pool(C.ROLE_LEGAL)
+    assert not can_edit_pool(C.ROLE_VIEWER)
+    assert not can_edit_pool(None)
+
+
 # ------------------------------------------------------------------ 최근 선택값 (F-01-8)
 
 def test_limit_preference_is_remembered_per_user():

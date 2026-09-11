@@ -1,21 +1,27 @@
 """S-02 후보 검색 (PRD F-01, F-02).
 
 모든 검색 조건은 드롭다운이다. 키워드 입력창을 만들지 않는다. (불변규칙 3, F-09-1)
-화면의 유일한 텍스트 입력은 '프리셋 이름'이며, 검색 조건으로는 절대 쓰이지 않는다.
+화면의 텍스트 입력은 '프리셋 이름'과 'POOL 저장 정보(명칭·목적·대상 직위·메모)'뿐이며,
+어느 것도 검색 조건으로 쓰이지 않는다.
 검색·집계 로직은 core/search.py 에 있고 이 파일은 표현만 담당한다.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import streamlit as st
 
 from core import codes as CODES
 from core import constants as C
-from core import preferences, presets, scoring, search, settings, state
+from core import pools, preferences, presets, scoring, search, settings, state
 from core.audit import log_access
-from core.guard import confidential_notice, require, stage_notice
+from core.auth import can_edit_pool
+from core.guard import confidential_notice, require
+from reports import exports
+from reports.builder import check_export
+from reports.xlsx import ExportMeta, build_table_xlsx
 
 user = require("search")
 
@@ -309,7 +315,9 @@ signature = json.dumps([f, limit_code], sort_keys=True, ensure_ascii=False, defa
 if state.get(state.K_SIGNATURE) != signature:
     state.put(state.K_SIGNATURE, signature)
     state.put(state.K_PAGE, 1)
-    st.session_state.pop("w_page", None)
+    # 조건이 바뀌면 페이지·행 선택·생성해 둔 내보내기 파일을 모두 버린다(옛 결과 기준 오작동 방지)
+    for key in ("w_page", "tbl_normal", "tbl_failed", state.K_EXPORT, state.K_EXPORT_SIG):
+        st.session_state.pop(key, None)
 
 requested_limit, _ = search.resolve_limit(limit_code, user.role)
 if requested_limit >= 100:
@@ -399,8 +407,21 @@ def _to_table(rows):
 normal = [r for r in result.rows if r.screening != C.SCREEN_FAIL]
 failed = [r for r in result.rows if r.screening == C.SCREEN_FAIL]
 
+def _selected(rows, event) -> list[int]:
+    try:
+        idx = list(event.selection.rows)
+    except AttributeError:
+        idx = []
+    return [rows[i].person_id for i in idx if 0 <= i < len(rows)]
+
+
+selected: list[int] = []
 if normal:
-    st.dataframe(_to_table(normal), hide_index=True, width="stretch")
+    ev_normal = st.dataframe(
+        _to_table(normal), hide_index=True, width="stretch",
+        on_select="rerun", selection_mode="multi-row", key="tbl_normal",
+    )
+    selected += _selected(normal, ev_normal)
 
 if failed:
     st.divider()
@@ -409,7 +430,11 @@ if failed:
         "스크리닝에서 결격 가능으로 판정된 후보입니다. 적합도와 무관하게 목록 하단에 분리 표시하며, "
         "최종 판단은 법무 검토로 확정합니다. (PRD F-06)"
     )
-    st.dataframe(_to_table(failed), hide_index=True, width="stretch")
+    ev_failed = st.dataframe(
+        _to_table(failed), hide_index=True, width="stretch",
+        on_select="rerun", selection_mode="multi-row", key="tbl_failed",
+    )
+    selected += _selected(failed, ev_failed)
 
 # 페이지네이션: 조회 인원 수(N)와 페이지 크기는 별개 (F-02-5)
 if result.page_count > 1:
@@ -423,32 +448,102 @@ if result.page_count > 1:
     )
     if new_page != result.page:
         state.put(state.K_PAGE, new_page)
+        st.session_state.pop("tbl_normal", None)
+        st.session_state.pop("tbl_failed", None)
         st.rerun()
 
-# ------------------------------------------------------------------ 후보 이동
+# ------------------------------------------------------------------ 선택 후보 액션 (F-02 액션, F-02-1, F-02-2)
 
 st.divider()
-col_a, col_b = st.columns(2)
-with col_a:
-    ids = [r.person_id for r in result.rows]
-    if ids:
-        picked = st.selectbox(
-            "상세 볼 후보",
-            ids,
-            format_func=lambda pid: next(r.name_ko for r in result.rows if r.person_id == pid),
-        )
-        if st.button("후보 상세 열기", width="stretch"):
-            state.put(state.K_SELECTED_PERSON, picked)
-            st.switch_page("pages/2_후보_상세.py")
-        if st.button("비교함에 담기 (최대 4명)", width="stretch"):
-            basket = state.compare_basket()
-            if picked in basket:
-                st.info("이미 담겨 있습니다.")
-            elif len(basket) >= 4:
-                st.warning("비교는 최대 4명까지 가능합니다.")
+if selected:
+    st.markdown(f"**선택한 후보 {len(selected)}명**")
+else:
+    st.caption("목록에서 행을 선택하면 상세보기·비교함 담기·POOL 저장을 할 수 있습니다.")
+
+a1, a2 = st.columns(2)
+if a1.button("상세보기", disabled=len(selected) != 1, width="stretch", help="1명을 선택하세요"):
+    state.put(state.K_SELECTED_PERSON, selected[0])
+    st.switch_page("pages/2_후보_상세.py")
+if a2.button("비교함 담기 (최대 4명)", disabled=not selected, width="stretch"):
+    basket = state.compare_basket()
+    new = [pid for pid in selected if pid not in basket]
+    if len(basket) + len(new) > 4:
+        st.warning(f"비교는 최대 4명까지입니다. 현재 {len(basket)}명이 담겨 있습니다.")
+    else:
+        basket.extend(new)
+        state.put(state.K_COMPARE_BASKET, basket)
+        st.success(f"비교함에 담았습니다. (총 {len(basket)}명)")
+
+if can_edit_pool(user.role):
+    with st.expander(f"선택 후보를 POOL에 저장 ({len(selected)}명)"):
+        mode = st.radio("저장 방식", ["기존 POOL에 추가", "새 POOL 만들기"], horizontal=True, key="pool_mode")
+        if mode == "기존 POOL에 추가":
+            plist = pools.list_pools()
+            if not plist:
+                st.caption("생성된 POOL 이 없습니다. '새 POOL 만들기'를 선택하세요.")
             else:
-                basket.append(picked)
-                state.put(state.K_COMPARE_BASKET, basket)
-                st.success("비교함에 담았습니다.")
-with col_b:
-    stage_notice("목록에서 여러 명 선택·POOL 저장·XLSX 내보내기는 다음 작업 단위(2-7)에서 구현합니다.")
+                target = st.selectbox("POOL", plist, format_func=lambda p: p.name, key="pool_pick")
+                memo = st.text_input("메모", key="pool_memo")
+                if st.button("선택 후보 추가", disabled=not selected):
+                    added, skipped = pools.add_members(target.pool_id, selected, user.user_id, memo or None)
+                    st.success(f"{added}명 추가" + (f", 이미 등록된 {skipped}명 제외" if skipped else ""))
+        else:
+            with st.form("pool_new", clear_on_submit=True):
+                name = st.text_input("POOL 명칭 *", key="pool_name")
+                purpose = st.text_input("목적", key="pool_purpose")
+                target_position = st.text_input("대상 직위", key="pool_target")
+                memo = st.text_area("메모", key="pool_memo_new")
+                submitted = st.form_submit_button("POOL 생성 후 선택 후보 저장")
+            if submitted:
+                if not selected:
+                    st.warning("먼저 목록에서 후보를 선택하세요.")
+                else:
+                    try:
+                        pid = pools.create_pool(name, user.user_id, purpose=purpose,
+                                                target_position=target_position, memo=memo)
+                        added, _ = pools.add_members(pid, selected, user.user_id)
+                        st.success(f"POOL '{name.strip()}'을 만들고 {added}명을 저장했습니다.")
+                    except ValueError as exc:
+                        st.warning(str(exc))
+
+# ------------------------------------------------------------------ XLSX 내보내기 (F-02-3, F-09-9)
+
+st.divider()
+st.subheader("내보내기")
+ranked = search.search_ranked(f, limit_code, user.role)
+export_ids = [pid for pid, _ in ranked]
+gate = check_export(user.role, exports.profile_statuses(export_ids))
+
+if not export_ids:
+    st.caption("내보낼 후보가 없습니다.")
+elif not gate.allowed:
+    st.button("XLSX 내보내기", disabled=True, key="xlsx_blocked", help=gate.reason)
+    st.caption(f"출력할 수 없습니다 — {gate.reason}")
+else:
+    st.caption(f"현재 조건의 상위 {len(export_ids)}명을 순위대로 내보냅니다. 조회 조건·인원 수·일시와 열람자가 파일에 기록됩니다.")
+    if st.button(f"XLSX 파일 생성 (상위 {len(export_ids)}명)"):
+        conditions = [text for _, _, text in chips] + [
+            f"정렬: {sort_labels.get(sort_code, sort_code)}",
+            f"최대 조회 인원 수: {limit_labels.get(limit_code, limit_code)}",
+        ]
+        meta = ExportMeta(
+            title="후보 검색 결과",
+            viewer_label=f"{user.display_name} ({user.email})",
+            generated_at=datetime.now(),
+            conditions=conditions,
+            total_matched=result.total_matched,
+            shown=len(export_ids),
+        )
+        with st.spinner("파일 생성 중…"):
+            state.put(state.K_EXPORT, build_table_xlsx(exports.candidate_rows(export_ids, dict(ranked)), meta))
+        state.put(state.K_EXPORT_SIG, signature)
+    if state.get(state.K_EXPORT) is not None and state.get(state.K_EXPORT_SIG) == signature:
+        st.download_button(
+            "XLSX 다운로드",
+            data=state.get(state.K_EXPORT),
+            file_name=f"candidates_{datetime.now():%Y%m%d_%H%M}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            on_click=log_access,
+            args=(user.user_id, C.ACT_EXPORT),
+            kwargs={"page": "search", "target_person_ids": export_ids, "detail": "xlsx 목록 내보내기"},
+        )

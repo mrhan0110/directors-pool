@@ -18,7 +18,11 @@
 
 ## ▶ 다음 작업
 
-**2-7. B 결과 목록 액션 + XLSX** (§B). 이미 작성됨(미커밋 가능): `core/pools.py`(POOL CRUD·상태전이·코멘트·타임라인·동시수정 거부), `reports/xlsx.py`(build_table_xlsx, 워터마크), `reports/exports.py`(candidate_rows: 순위·출처 URL), 테스트 `tests/test_pools.py`, `tests/test_exports.py`. 남은 것: `core/search.py`에 `search_ranked()`(id, 적합도) 추가 → 검색 화면 결과표를 `st.dataframe(on_select="rerun", selection_mode="multi-row")`로 바꾸고 선택 후보 [상세] [비교함] [POOL 추가(기존/신규: 명칭·목적·대상 직위·메모)], XLSX 다운로드(상위 N명 전체, `check_export` 게이트 — 미검수 포함 시 비활성+사유, 다운로드 시 AccessLog export).
+**2-8. C 상세 화면** (§C). 작성 완료·**미검증**: `pages/2_후보_상세.py` 재작성, `core/reputation.py`(평판 정량 신호), `core/career.remaining_label`, `core/auth` `can_review/can_override_screening`, `tests/test_detail_helpers.py`. 먼저 전체 테스트 → 통과 시 2-7·2-8을 파일 지정으로 각각 커밋. 2-8 커밋 대상: pages/2_후보_상세.py core/reputation.py core/career.py core/sources.py core/considerations.py core/constants.py core/settings.py tests/test_sources.py tests/test_considerations.py tests/test_detail_helpers.py.
+- 이미 작성된 2-9용: `core/review.py`(승인/수정/삭제/완료/재검수/충돌알림) + `tests/test_review.py` — 2-9에서 검수 화면과 함께 커밋.
+- 외부뷰어 후보 범위 제한은 2-11에서 상세·비교·POOL 화면에 추가(현재는 전 후보 조회 가능 — 반드시 2-11에서 막을 것).
+
+**(완료) 2-7. B 결과 목록 액션 + XLSX** (§B). 2-7 커밋 대상: core/search.py core/auth.py core/state.py pages/1_후보_검색.py core/pools.py reports/xlsx.py reports/exports.py tests/test_pools.py tests/test_exports.py tests/test_search_features.py tests/test_pages_render.py PROGRESS.md. 이미 작성됨(미커밋 가능): `core/pools.py`(POOL CRUD·상태전이·코멘트·타임라인·동시수정 거부), `reports/xlsx.py`(build_table_xlsx, 워터마크), `reports/exports.py`(candidate_rows: 순위·출처 URL), 테스트 `tests/test_pools.py`, `tests/test_exports.py`. 남은 것: `core/search.py`에 `search_ranked()`(id, 적합도) 추가 → 검색 화면 결과표를 `st.dataframe(on_select="rerun", selection_mode="multi-row")`로 바꾸고 선택 후보 [상세] [비교함] [POOL 추가(기존/신규: 명칭·목적·대상 직위·메모)], XLSX 다운로드(상위 N명 전체, `check_export` 게이트 — 미검수 포함 시 비활성+사유, 다운로드 시 AccessLog export).
 
 **(완료) 2-6. A 검색 core + 필터 화면** (§A). core: `search(f, limit_code, role, page=1)` 페이지네이션(SearchResult에 page/page_size/page_count, `shown`=min(N,전체)), `search_ids()`(상위 N명 id — 내보내기·POOL 저장용), `core/presets.py`(목록/저장(이름 upsert)/삭제(소유자 확인)), `core/preferences.py`(get/set, 키 `search.limit_code`). 화면(`pages/1_후보_검색.py`): 건수 배지(`option_counts`를 `st.cache_data(ttl=60)`, 필터 JSON 키), 조건 칩 ✕ 해제, 프리셋 저장·불러오기, 최근 인원수 영속, 페이지 이동, 100명↑ 지연 안내+spinner, 적합도 상시 문구. `tests/test_search_limit.py`의 `shown == len(rows)` 단언은 페이지네이션에 맞게 수정.
 - 2-5 메모: 시드는 마지막에 `batch.run.run("analyze")` 호출(200명 ≈ 28초). 배치 CLI `python -m batch.run analyze|classify|screen|score`, AuditLog entity=`batch` start/finish/fail. **스크리닝 기관명 매칭은 정규화 후 정확 일치만**(부분 포함 매칭이 대주주 재단을 자사로 오판한 버그 수정).
@@ -36,7 +40,7 @@
 - [x] 2-4 F 적합도 점수 (`core/scoring.py`, PersonScore) — §F
 - [x] 2-5 시드 재작성: 엔진으로 스크리닝·분류·점수 산출, 자사/충돌/수동검수 케이스 포함 + `batch/run.py`
 - [x] 2-6 A 검색 core+화면: 건수 배지, 칩 해제, 프리셋, 최근 인원수 사용자별 저장, 페이지네이션 — §A
-- [ ] 2-7 B 결과 목록: 전체 컬럼, 행 선택→상세/POOL 추가/비교, XLSX 내보내기 — §B
+- [x] 2-7 B 결과 목록: 전체 컬럼, 행 선택→상세/POOL 추가/비교, XLSX 내보내기 — §B
 - [ ] 2-8 C 상세: 전 섹션, 출처 충돌(대체 정보), 구 정보 배지, 평판 정량, 18개 고려사항 체크리스트 — §C
 - [ ] 2-9 H POOL 관리(CRUD·상태 전이·사유·타임라인) + 검수(3분할·승인/수정/삭제·ReviewLog·충돌 알림) — §H
 - [ ] 2-10 I 리포트: 사추위 2페이지 PDF(부록 A·B, 워터마크) + POOL PDF/XLSX — §I
